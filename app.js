@@ -1,5 +1,5 @@
 const program = require('commander');
-const { updateSubscribers, removeSubscriber, removeSubscriberFromTopic } = require('./src/model/model');
+const { updateSubscribers, removeSubscriber, removeSubscriberFromTopic, test } = require('./src/model/model');
 
 program
     .version('1.0.0')
@@ -16,5 +16,8 @@ program
     .command('removeSubscriberFromTopic')
     .description('Removes a subscriber from single topics')
     .action(removeSubscriberFromTopic);
+program
+    .command('test')
+    .action(test);
 
 program.parse(process.argv);

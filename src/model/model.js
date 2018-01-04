@@ -1,52 +1,141 @@
 const config = require(process.env.NODE_CONFIG_FILE_GOVDEL);
-const { prepareSubscriptionRequest, prepareSubscriberRequest } = require('../resources/govdelResources');
+const { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareResponseSubmissionRequest } = require('../resources/govdelResources');
 const { getUsers } = require('../connectors/vdsConnector');
+const mongoConnector = require('../connectors/mongoConnector');
 const request = require('request');
-const readline = require('readline');
-const fs = require('fs');
+const logger = require('winston');
+
+const test = async () => {
+    console.log('starting test');
+
+    setTimeout(() => {
+        callback();
+    }, 1000);
+    
+    const callback = () => {
+        console.log('callback');
+    };
+};
 
 const updateSubscribers = async () => {
-    const vdsEmails = await getUsers('nci');
-    let lastRunEmails = [];
 
-    const lineReader = readline.createInterface({
-        input: fs.createReadStream(config.govdel.prevload)
-    });
+    try {
+        const connection = await mongoConnector.getConnection();
+        logger.info('Connecting to ' + config.db.users_collection + ' collection');
+        const collection = connection.collection(config.db.users_collection);
 
-    lineReader.on('line', (line) => {
-        lastRunEmails.push(line);
-    });
+        logger.info('Retrieving users from VDS');
+        const usersFromCurrentVds = await getUsers('nci');
 
-    const toAdd = [];
-    const toRemove = [];
+        logger.info('Retrieving user set from previous update');
+        const usersFromPreviousUpdate = await collection.find().sort({ email: 1 }).toArray() || [];
 
-    lineReader.on('close', () => {
-        lastRunEmails = lastRunEmails.sort();
+        // await collection.insertMany(users, {
+        //     ordered: false
+        // });
 
-        let left = vdsEmails.shift();
-        let right = lastRunEmails.shift();
+        // let lastRunEmails = [];
+
+        // const lineReader = readline.createInterface({
+        //     input: fs.createReadStream(config.govdel.prevload)
+        // });
+
+        // lineReader.on('line', (line) => {
+        //     lastRunEmails.push(line);
+        // });
+
+        const toAdd = [];
+        const toUpdate = [];
+        const toRemove = [];
+
+        // lineReader.on('close', () => {
+        //     lastRunEmails = lastRunEmails.sort();
+
+        let left = usersFromCurrentVds.shift();
+        let right = usersFromPreviousUpdate.shift();
 
         while (left || right) {
-            if (left && left.email === right) {
-                // do nothing
-                left = vdsEmails.shift();
-                right = lastRunEmails.shift();
-            } else if (right && (!left || left.email > right)) {
+            if (left && right && left.email === right.email) {
+                // Check for changes in any of the record fields
+                if (left.status !== right.status || left.division !== right.division || left.building !== right.building) {
+                    toUpdate.push(left);
+                }
+                left = usersFromCurrentVds.shift();
+                right = usersFromPreviousUpdate.shift();
+            } else if (right && (!left || left.email > right.email)) {
                 // subscriber has to be removed
                 toRemove.push(right);
-                right = lastRunEmails.shift();
-            } else if (left && (!right || left.email < right)) {
+                right = usersFromPreviousUpdate.shift();
+            } else if (left && (!right || left.email < right.email)) {
                 // subscriber has to be added
-                toAdd.push(left.email + ' | ' + left.uniqueidentifier + ' | ' + left.distinguishedName);
-                left = vdsEmails.shift();
+                toAdd.push(left);
+                // toAdd.push(left.email + ' | ' + left.uniqueidentifier + ' | ' + left.distinguishedName);
+                //toAdd.push(left.email);
+                left = usersFromCurrentVds.shift();
             }
         }
-        console.log(toAdd.length + ' to add');
-        console.log(toAdd.join('\n'));
-        console.log(toRemove.length + ' to remove: ');
+        logger.info(toAdd.length + ' to add');
+        logger.info(toUpdate.length + ' to update');
+        // console.log(toAdd.join('\n'));
+        logger.info(toRemove.length + ' to remove');
         // console.log(toRemove.join('\n'));
-    });
+        // });
 
+        const ops = [];
+
+        toRemove.forEach(user => {
+            ops.push({
+                deleteOne:
+                    {
+                        filter: { uniqueidentifier: user.uniqueidentifier }
+                    }
+            });
+        });
+
+        toUpdate.forEach(user => {
+            ops.push({
+                replaceOne:
+                    {
+                        filter: { uniqueidentifier: user.uniqueidentifier },
+                        replacement: user,
+                        upsert: true
+                    }
+            });
+        });
+
+        toAdd.forEach(user => {
+            ops.push({
+                insertOne:
+                    {
+                        document: user
+                    }
+            });
+        });
+
+        if (ops.length > 0) {
+            await collection.bulkWrite(ops);
+        }
+
+        // toAdd.forEach(user => {
+        //     console.log('posting user');
+        //     request.post(
+        //         prepareSubscriberCreateRequest(user.email),
+        //         (error, response) => {
+        //             if (!error && response.statusCode == 200) {
+        //                 const req = prepareResponseSubmissionRequest(user);
+        //                 console.log(req);
+        //                 request.put(prepareResponseSubmissionRequest(user), callback);
+        //             } else logger.error('error ' + error);
+        //         }
+        //     );
+        // });
+
+        console.log('time to exit');
+        // process.exit();
+    } catch (error) {
+        logger.error('FATAL ERROR: ' + error);
+        process.exit();
+    }
     // console.log(emails);
     // process emails to pick NED MAIL. If NED MAIL not available, pich NIHPRIMARYSMTP
 
@@ -59,29 +148,22 @@ const updateSubscribers = async () => {
     //     prepareSubscriptionRequest('svetoslav.yankov@nih.gov'),
     //     callback
     // );
+
 };
 
 const removeSubscriber = () => {
     request.delete(
-        prepareSubscriberRequest('svetoslav.yankov@nih.gov'),
+        prepareSubscriberRemoveRequest('svetoslav.yankov@nih.gov'),
         callback
     );
 };
 
-const removeSubscriberFromTopic = () => {
-
-    request.delete(
-        prepareSubscriptionRequest('svetoslav.yankov@nih.gov'),
-        callback
-    );
-
-};
 
 function callback(error, response, body) {
     if (!error && response.statusCode == 200) {
-        console.log(body);
-    } else console.log('error ' + error + ', code: ' + response.statusCode + ', ' + response.body);
+        logger.info(body);
+    } else logger.error('error ' + error + ', code: ' + response.statusCode + ', ' + response.body);
 }
 
 
-module.exports = { updateSubscribers, removeSubscriber, removeSubscriberFromTopic };
+module.exports = { updateSubscribers, removeSubscriber, test };

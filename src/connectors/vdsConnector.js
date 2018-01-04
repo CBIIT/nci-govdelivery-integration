@@ -10,12 +10,22 @@ const getUsers = (ic) => {
 
     return new Promise(async (resolve, reject) => {
 
+        // resolve([{
+        //     email: 'svetoslav.yankov@nih.gov',
+        //     uniqueidentifier: '2002124076',
+        //     distinguishedName: 'CN=yankovsr,OU=Users,OU=NCI,OU=NIH,OU=AD,DC=nih,DC=gov',
+        //     status: 'CONTRACTOR',
+        //     division: 'CBIIT',
+        //     building: 'BG 9609'
+        // }]);
+        
+        
         const nciSubFilter = '(NIHORGACRONYM=' + ic + ')';
-        const inactiveFilter = '(!(distinguishedName=*InActive*))';
-        const dnFilter = '(distinguishedName=*OU=Users,OU=*,OU=NIH,OU=AD,DC=nih,DC=gov)';
-        const noAdAcctFilter = '(!(NIHADACCTREQ=N))';
-        const guestFilter = '(!(ORGANIZATIONALSTAT=GUEST))';
-        const volunteerFilter = '(!(ORGANIZATIONALSTAT=VOLUNTEER))';
+        // const inactiveFilter = '(!(distinguishedName=*InActive*))';
+        // const dnFilter = '(distinguishedName=*OU=Users,OU=*,OU=NIH,OU=AD,DC=nih,DC=gov)';
+        // const noAdAcctFilter = '(!(NIHADACCTREQ=N))';
+        // const guestFilter = '(!(ORGANIZATIONALSTAT=GUEST))';
+        // const volunteerFilter = '(!(ORGANIZATIONALSTAT=VOLUNTEER))';
 
 
         const filter = ('(&' + nciSubFilter + ')');
@@ -23,8 +33,6 @@ const getUsers = (ic) => {
         // const filter = '(&(NIHORGACRONYM=' + ic + ') (!(vddn=*_InActive*)))';
 
         // const filter = '\'(&(NIHORGACRONYM=NCI) (!(vddn=*_InActive*)))\'';
-
-        console.log(filter);
 
         var userSearchOptions = {
             scope: 'sub',
@@ -56,12 +64,19 @@ const getUsers = (ic) => {
                     // users.push(obj);
                     let email = getEmail(entry.object);
                     if (email) {
-                        users.push({ email: email, uniqueidentifier: entry.object.UNIQUEIDENTIFIER, distinguishedName: entry.object.distinguishedName });
+                        users.push({
+                            email: email,
+                            uniqueidentifier: entry.object.UNIQUEIDENTIFIER,
+                            distinguishedName: entry.object.distinguishedName,
+                            status: entry.object.ORGANIZATIONALSTAT || 'N/A',
+                            division: getDivision(entry.object),
+                            building: getBuilding(entry.object)
+                        });
                     }
                 });
                 ldapRes.on('searchReference', () => { });
                 ldapRes.on('page', () => {
-                    logger.info('page end');
+                    // logger.info('page end');
                 });
                 ldapRes.on('error', (err) => {
                     ldapClient.destroy();
@@ -79,6 +94,7 @@ const getUsers = (ic) => {
                 });
             });
         });
+        
     });
 };
 
@@ -130,10 +146,43 @@ const getLdapClient = async () => {
 
 const getEmail = (obj) => {
     const nedEmail = obj.MAIL && obj.MAIL.trim() !== '' ? obj.MAIL.trim() : null;
-    const adEmail = obj.NIHPRIMARYSMTP && obj.NIHPRIMARYSMTP.trim() !== '' ? obj.NIHPRIMARYSMTP.trim() : null;
+    // const adEmail = obj.NIHPRIMARYSMTP && obj.NIHPRIMARYSMTP.trim() !== '' ? obj.NIHPRIMARYSMTP.trim() : null;
 
-    return nedEmail ? nedEmail : adEmail;
+    return nedEmail;
 
+    // return nedEmail ? nedEmail : adEmail;
+};
+
+const getDivision = (obj) => {
+
+    let result = 'N/A';
+
+    if (obj.NIHORGPATH) {
+        const orgPathArr = obj.NIHORGPATH.split(' ') || [];
+        const len = orgPathArr.length;
+
+        if (len > 0 && len <= 2) {
+            result = orgPathArr[len - 1];
+        } else if (len > 2) {
+            if (orgPathArr[1] === 'OD') {
+                result = orgPathArr[2];
+            } else {
+                result = orgPathArr[1];
+            }
+        }
+    }
+
+    return result;
+
+};
+
+const getBuilding = (obj) => {
+
+    if (obj.BUILDINGNAME) {
+        return 'BG ' + obj.BUILDINGNAME;
+    } else {
+        return 'N/A';
+    }
 };
 
 
