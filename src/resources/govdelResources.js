@@ -1,6 +1,6 @@
-const config = require(process.env.NODE_CONFIG_FILE_GOVDEL);
+const { config } = require('../../constants');
 
-const getTopicCode = () => {
+const getDefaultTopicCode = () => {
     return config.govdel.nciAllTopicCode;
 };
 
@@ -10,10 +10,6 @@ const getAccountCode = () => {
 
 const getBaseUrl = () => {
     return config.govdel.baseUrl;
-};
-
-const base64Encode = (value) => {
-    return Buffer.from(value).toString('base64');
 };
 
 const encodeSubscriberId = (email) => {
@@ -32,24 +28,51 @@ const getResponseResource = () => {
     return config.govdel.responseResource;
 };
 
-const getFullSubscriptionUrl = () => {
+/**
+ * @return Returns the URL of an API which can be used to POST or DELETE subscription topics to/from a subscriber.
+ *         If topic subscriptions are posted for non-existing subscribers, a new subscriber record is created.
+ */
+const getSubscriptionUrl = () => {
     const baseUrl = getBaseUrl();
     const accountCode = getAccountCode();
     const resource = getSubscriptionResource();
     console.log('URL1: ' + baseUrl + accountCode + resource);
-    return baseUrl + accountCode + resource;
+    return baseUrl + accountCode + resource + '.xml';
 };
 
-const getFullSubscriberUrl = (email) => {
+/**
+ * 
+ * @param {string} email
+ * @return Returns the URL of an API which can be used to GET, PUT or DELETE a subscriber record
+ * 
+ */
+const getSubscriberModificationUrl = (email) => {
     const baseUrl = getBaseUrl();
     const accountCode = getAccountCode();
     const resource = getSubscriberResource();
     const encodedSubscriberId = encodeSubscriberId(email);
     console.log('URL 2: ' + baseUrl + accountCode + resource + encodedSubscriberId + '.xml');
     return baseUrl + accountCode + resource + encodedSubscriberId + '.xml';
+
 };
 
-const getFullResponseSubmissionUrl = (email) => {
+
+/**
+ * @return Returns the URL of an API which can be used to POST new subscriber records.
+ */
+const getSubscriberCreationUrl = () => {
+    const baseUrl = getBaseUrl();
+    const accountCode = getAccountCode();
+    const resource = getSubscriberResource();
+    return baseUrl + accountCode + resource + '.xml';
+};
+
+/**
+ * 
+ * @param {string} email
+ * @return Returns the URL of an API which can be used to PUT responses to questions for the subscriber specified by email
+ */
+const getResponseSubmissionUrl = (email) => {
     const baseUrl = getBaseUrl();
     const accountCode = getAccountCode();
     const subscriberResource = getSubscriberResource();
@@ -57,7 +80,7 @@ const getFullResponseSubmissionUrl = (email) => {
     const encodedSubscriberId = encodeSubscriberId(email);
     console.log('URL3: ' + baseUrl + accountCode + subscriberResource + encodedSubscriberId + responseResource);
 
-    return baseUrl + accountCode + subscriberResource + encodedSubscriberId + responseResource;
+    return baseUrl + accountCode + subscriberResource + encodedSubscriberId + responseResource + '.xml?send_notifications=false';
 };
 
 const getAuthenticationObject = () => ({
@@ -67,7 +90,7 @@ const getAuthenticationObject = () => ({
 
 const getTopics = () => `
 <topic>
-    <code>${getTopicCode()}</code>
+    <code>${getDefaultTopicCode()}</code>
 </topic>
 `;
 
@@ -77,23 +100,6 @@ const composeSubscriber = (email) => `
     <send-notifications type="boolean">false</send-notifications>
     <topics type="array">${getTopics()}</topics>
 </subscriber>
-`;
-
-const composeResponses_ = (user) => `
-<responses type="array">
-    <response>
-        <question-id>${base64Encode('21137')}</question-id>
-        <answer-id>${base64Encode(user.status)}</answer-id>
-    </response>
-    <response>
-        <question-id>${base64Encode('21217')}</question-id>
-        <answer-id>${base64Encode(user.division)}</answer-id>
-    </response>
-    <response>
-        <question-id>${base64Encode('21237')}</question-id>
-        <answer-id>${base64Encode(user.building)}</answer-id>
-    </response>
-</responses>
 `;
 
 const composeResponses = (user) => `
@@ -114,14 +120,14 @@ const composeResponses = (user) => `
 `;
 
 const prepareSubscriberRemoveRequest = (email) => ({
-    url: getFullSubscriberUrl(email),
+    url: getSubscriberModificationUrl(email),
     auth: getAuthenticationObject()
 });
 
-
 const prepareSubscriberCreateRequest = (email) => {
     const subscriber = composeSubscriber(email);
-    const url = getFullSubscriptionUrl();
+    // Create subscriber and add a default subscription at the same time
+    const url = getSubscriptionUrl();
     const auth = getAuthenticationObject();
 
     return {
@@ -133,7 +139,7 @@ const prepareSubscriberCreateRequest = (email) => {
 };
 
 const prepareResponseSubmissionRequest = (user) => {
-    const url = getFullResponseSubmissionUrl(user.email);
+    const url = getResponseSubmissionUrl(user.email);
     const auth = getAuthenticationObject();
     const responses = composeResponses(user);
 

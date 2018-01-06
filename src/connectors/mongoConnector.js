@@ -4,9 +4,9 @@ const MongoClient = require('mongodb').MongoClient;
 const logger = require('winston');
 const assert = require('assert');
 
-var connection;
+let client, connection;
 
-const getConnection = () => {
+const getConnection_ = async () => {
     return new Promise((resolve, reject) => {
         if (connection) {
             resolve(connection);
@@ -24,15 +24,32 @@ const getConnection = () => {
     });
 };
 
-const releaseConnection = (connection) => {
-    connection.close(err => {
-        if (err) {
-            logger.error(err.message);
-        } else {
-            logger.info('Mongo Connection closed');
+const getConnection = async () => {
+    if (connection) {
+        return connection;
+    } else {
+        try {
+            client = await MongoClient.connect(config.db.base_url);
+            connection = client.db(config.db.database);
+            logger.info('Mongo Connection successful');
+            return connection;
+        } catch (error) {
+            logger.error(error);
+            System.exit(1);
         }
     }
-    );
+};
+
+const releaseConnection = () => {
+    if (client) {
+
+        try {
+            client.close();
+            logger.info('Mongo Connection closed');
+        } catch (error) {
+            logger.info(error);
+        }
+    }
 };
 
 

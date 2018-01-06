@@ -1,9 +1,10 @@
-const config = require(process.env.NODE_CONFIG_FILE_GOVDEL);
+const { config } = require('../../constants');
 const { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareResponseSubmissionRequest } = require('../resources/govdelResources');
 const { getUsers } = require('../connectors/vdsConnector');
 const mongoConnector = require('../connectors/mongoConnector');
 const request = require('request');
 const logger = require('winston');
+global.report = '';
 
 const test = async () => {
     console.log('starting test');
@@ -11,13 +12,20 @@ const test = async () => {
     setTimeout(() => {
         callback();
     }, 1000);
-    
+
     const callback = () => {
-        console.log('callback');
+        console.log('callback in test');
     };
+
+    console.log('at end of test');
+};
+
+const logToReport = (str) => {
+    global.report += '<p>' + str + '</p>';
 };
 
 const updateSubscribers = async () => {
+    logToReport('Starting subscriber update on ' + Date().toLocaleString());
 
     try {
         const connection = await mongoConnector.getConnection();
@@ -29,27 +37,9 @@ const updateSubscribers = async () => {
 
         logger.info('Retrieving user set from previous update');
         const usersFromPreviousUpdate = await collection.find().sort({ email: 1 }).toArray() || [];
-
-        // await collection.insertMany(users, {
-        //     ordered: false
-        // });
-
-        // let lastRunEmails = [];
-
-        // const lineReader = readline.createInterface({
-        //     input: fs.createReadStream(config.govdel.prevload)
-        // });
-
-        // lineReader.on('line', (line) => {
-        //     lastRunEmails.push(line);
-        // });
-
         const toAdd = [];
         const toUpdate = [];
         const toRemove = [];
-
-        // lineReader.on('close', () => {
-        //     lastRunEmails = lastRunEmails.sort();
 
         let left = usersFromCurrentVds.shift();
         let right = usersFromPreviousUpdate.shift();
@@ -74,6 +64,10 @@ const updateSubscribers = async () => {
                 left = usersFromCurrentVds.shift();
             }
         }
+        logToReport(toAdd.length + ' users to add.');
+        logToReport(toUpdate.length + ' users to update.');
+        logToReport(toRemove.length + ' users to remove.');
+
         logger.info(toAdd.length + ' to add');
         logger.info(toUpdate.length + ' to update');
         // console.log(toAdd.join('\n'));
@@ -93,49 +87,89 @@ const updateSubscribers = async () => {
         });
 
         toUpdate.forEach(user => {
-            ops.push({
-                replaceOne:
-                    {
-                        filter: { uniqueidentifier: user.uniqueidentifier },
-                        replacement: user,
-                        upsert: true
-                    }
-            });
+            if (validEntry(user)) {
+                ops.push({
+                    replaceOne:
+                        {
+                            filter: { uniqueidentifier: user.uniqueidentifier },
+                            replacement: user,
+                            upsert: true
+                        }
+                });
+            } else {
+                logger.error('user ' + user.email + ' has invalid entries');
+                logToReport('user ' + user.email + ' has invalid entries');
+            }
         });
 
         toAdd.forEach(user => {
-            ops.push({
-                insertOne:
-                    {
-                        document: user
-                    }
-            });
+            if (validEntry(user)) {
+                ops.push({
+                    insertOne:
+                        {
+                            document: user
+                        }
+                });
+            } else {
+                logger.error('user ' + user.email + ' has invalid entries');
+                logToReport('user ' + user.email + ' has invalid entries');
+            }
         });
 
         if (ops.length > 0) {
             await collection.bulkWrite(ops);
+            await mongoConnector.releaseConnection();
+        } else {
+            await mongoConnector.releaseConnection();
         }
 
-        // toAdd.forEach(user => {
-        //     console.log('posting user');
-        //     request.post(
-        //         prepareSubscriberCreateRequest(user.email),
-        //         (error, response) => {
-        //             if (!error && response.statusCode == 200) {
-        //                 const req = prepareResponseSubmissionRequest(user);
-        //                 console.log(req);
-        //                 request.put(prepareResponseSubmissionRequest(user), callback);
-        //             } else logger.error('error ' + error);
-        //         }
-        //     );
-        // });
+        toAdd.forEach(user => {
+            if (validEntry(user)) {
+                const subCreateRequest = prepareSubscriberCreateRequest(user.email);
+                try {
+                    const response = request.post(subCreateRequest);
+                    if (response.statusCode === 200) {
+                        request.put(prepareResponseSubmissionRequest(user), callback);
+                    }
+                } catch (error) {
+                    logToReport(error);
+                    logger.error(error);
+                }
+            }
 
-        console.log('time to exit');
-        // process.exit();
+            // request.post(
+            //     prepareSubscriberCreateRequest(user.email),
+            //     (error, response) => {
+            //         if (!error && response.statusCode == 200) {
+            //             // const req = prepareResponseSubmissionRequest(user);
+            //             // console.log(req);
+            //             request.put(prepareResponseSubmissionRequest(user), callback);
+            //         } else logger.error('error ' + error);
+            //     }
+            // );
+        });
+
+        // An update to a subscriber can only be a change in the question responses. Hence, we call the response submission API. 
+        toUpdate.forEach(user => {
+            if (validEntry(user)) {
+                request.put(prepareResponseSubmissionRequest(user), callback);
+            }
+        });
+
+
+        toRemove.forEach(user => {
+            request.delete(prepareSubscriberRemoveRequest(user.email), callback);
+        });
+
+        // mailer.send(config.mail.admin_list, config.mail.subjectPrefix + ' ### Empty user_dn registration attempt', 'Headers: ' + headers);
+
     } catch (error) {
         logger.error('FATAL ERROR: ' + error);
-        process.exit();
+        logToReport(error);
+        process.exitCode(1);
     }
+
+
     // console.log(emails);
     // process emails to pick NED MAIL. If NED MAIL not available, pich NIHPRIMARYSMTP
 
@@ -151,19 +185,20 @@ const updateSubscribers = async () => {
 
 };
 
-const removeSubscriber = () => {
-    request.delete(
-        prepareSubscriberRemoveRequest('svetoslav.yankov@nih.gov'),
-        callback
-    );
+const validEntry = (user) => {
+    return config.govdel.status_answers[user.status] &&
+        config.govdel.division_answers[user.division] &&
+        config.govdel.building_answers[user.building];
 };
 
-
 function callback(error, response, body) {
-    if (!error && response.statusCode == 200) {
-        logger.info(body);
-    } else logger.error('error ' + error + ', code: ' + response.statusCode + ', ' + response.body);
+
+    console.log('callback');
+    if (error || response.statusCode !== 200) {
+        logger.error('error ' + error + ', code: ' + response.statusCode + ', ' + response.body);
+        logToReport('error ' + error + ', code: ' + response.statusCode + ', ' + response.body);
+    }
 }
 
 
-module.exports = { updateSubscribers, removeSubscriber, test };
+module.exports = { updateSubscribers, test };

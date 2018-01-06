@@ -1,5 +1,5 @@
-const config = require(process.env.NODE_CONFIG_FILE_GOVDEL);
-const logger = require('../config/log');
+const { config } = require('../../constants');
+const logger = require('winston');
 const ldap = require('ldapjs');
 const fs = require('fs');
 const tlsOptions = {
@@ -10,16 +10,16 @@ const getUsers = (ic) => {
 
     return new Promise(async (resolve, reject) => {
 
-        // resolve([{
-        //     email: 'svetoslav.yankov@nih.gov',
-        //     uniqueidentifier: '2002124076',
-        //     distinguishedName: 'CN=yankovsr,OU=Users,OU=NCI,OU=NIH,OU=AD,DC=nih,DC=gov',
-        //     status: 'CONTRACTOR',
-        //     division: 'CBIIT',
-        //     building: 'BG 9609'
-        // }]);
+        resolve([{
+            email: 'svetoslav.yankov@gmail.com',
+            uniqueidentifier: '2002124076',
+            distinguishedName: 'CN=yankovsr,OU=Users,OU=NCI,OU=NIH,OU=AD,DC=nih,DC=gov',
+            status: 'CONTRACTO',
+            division: 'CSSI',
+            building: 'BG 10A'
+        }]);
         
-        
+        /*
         const nciSubFilter = '(NIHORGACRONYM=' + ic + ')';
         // const inactiveFilter = '(!(distinguishedName=*InActive*))';
         // const dnFilter = '(distinguishedName=*OU=Users,OU=*,OU=NIH,OU=AD,DC=nih,DC=gov)';
@@ -94,7 +94,7 @@ const getUsers = (ic) => {
                 });
             });
         });
-        
+        */
     });
 };
 
