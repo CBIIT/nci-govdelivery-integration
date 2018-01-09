@@ -10,16 +10,16 @@ const getUsers = (ic) => {
 
     return new Promise(async (resolve, reject) => {
 
-        resolve([{
-            email: 'svetoslav.yankov@gmail.com',
-            uniqueidentifier: '2002124076',
-            distinguishedName: 'CN=yankovsr,OU=Users,OU=NCI,OU=NIH,OU=AD,DC=nih,DC=gov',
-            status: 'CONTRACTO',
-            division: 'CSSI',
-            building: 'BG 10A'
-        }]);
+        // resolve([{
+        //     email: 'anita.kalavar@nih.gov',
+        //     uniqueidentifier: '2002124076',
+        //     distinguishedName: 'CN=yankovsr,OU=Users,OU=NCI,OU=NIH,OU=AD,DC=nih,DC=gov',
+        //     status: 'CONTRACTOR',
+        //     division: 'CSSI',
+        //     building: 'BG 10A'
+        // }]);
         
-        /*
+        
         const nciSubFilter = '(NIHORGACRONYM=' + ic + ')';
         // const inactiveFilter = '(!(distinguishedName=*InActive*))';
         // const dnFilter = '(distinguishedName=*OU=Users,OU=*,OU=NIH,OU=AD,DC=nih,DC=gov)';
@@ -56,21 +56,21 @@ const getUsers = (ic) => {
                 if (err) {
                     logger.error('error: ' + err.code);
                 }
-                ldapRes.on('searchEntry', (entry) => {
+                ldapRes.on('searchEntry', ({object}) => {
                     if (++counter % 10000 === 0) {
                         logger.info(counter + ' records found and counting...');
                     }
                     // let obj = util.convertBase64Fields(entry);
                     // users.push(obj);
-                    let email = getEmail(entry.object);
+                    let email = getEmail(object);
                     if (email) {
                         users.push({
                             email: email,
-                            uniqueidentifier: entry.object.UNIQUEIDENTIFIER,
-                            distinguishedName: entry.object.distinguishedName,
-                            status: entry.object.ORGANIZATIONALSTAT || 'N/A',
-                            division: getDivision(entry.object),
-                            building: getBuilding(entry.object)
+                            uniqueidentifier: object.UNIQUEIDENTIFIER,
+                            distinguishedName: object.distinguishedName,
+                            status: object.ORGANIZATIONALSTAT || 'N/A',
+                            division: getDivision(object),
+                            building: getBuilding(object)
                         });
                     }
                 });
@@ -94,7 +94,7 @@ const getUsers = (ic) => {
                 });
             });
         });
-        */
+        
     });
 };
 
@@ -150,7 +150,7 @@ const getEmail = (obj) => {
 
     return nedEmail;
 
-    // return nedEmail ? nedEmail : adEmail;
+    //return nedEmail ? nedEmail : adEmail;
 };
 
 const getDivision = (obj) => {

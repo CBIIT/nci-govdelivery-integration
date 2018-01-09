@@ -35,7 +35,7 @@ const getConnection = async () => {
             return connection;
         } catch (error) {
             logger.error(error);
-            System.exit(1);
+            process.exit(1);
         }
     }
 };

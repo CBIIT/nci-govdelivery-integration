@@ -1,7 +1,8 @@
 const program = require('commander');
-const { config } = require('./constants');
-const { updateSubscribers, test } = require('./src/model/model');
+const { config, sendReport } = require('./constants');
+const { reloadAllSubscribers, updateSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly, test } = require('./src/model/model');
 const mailer = require('./src/config/mailer');
+const logger = require('./src/config/log');
 
 let end = false;
 process.on('beforeExit', async code => {
@@ -9,19 +10,31 @@ process.on('beforeExit', async code => {
         process.exit();
     }
     // send the update report
-    mailer.send(config.mail.admin_list, config.mail.subject_prefix + 'GevDelivery Update Report', global.report);
+    // sendReport();
+    mailer.send(config.mail.admin_list, config.mail.subjectPrefix + 'GevDelivery Update Report', global.report);
     end = true;
-    console.log('Process exit ' + code);
+    logger.info('Process exit ' + code);
 });
 
 program
     .version('1.0.0')
     .description('GovDelivery Subscriber Update');
 program
+    .command('reloadAllSubscribers')
+    .description('Deletes and reloads all subscribers')
+    .action(reloadAllSubscribers);
+program
     .command('updateSubscribers')
     .description('Updates subscribers')
-    .action(updateSubscribers)
-    .action(test);
+    .action(updateSubscribers);
+program
+    .command('removeAllSubscribers')
+    .description('Remove all subscribers')
+    .action(removeAllSubscribers);
+program
+    .command('reloadLocalUserBaseOnly')
+    .description('Reload Local User Base (No GovDel upload)')
+    .action(reloadLocalSubscriberBaseOnly);
 program
     .command('test')
     .action(test);

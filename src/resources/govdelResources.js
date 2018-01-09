@@ -36,7 +36,7 @@ const getSubscriptionUrl = () => {
     const baseUrl = getBaseUrl();
     const accountCode = getAccountCode();
     const resource = getSubscriptionResource();
-    console.log('URL1: ' + baseUrl + accountCode + resource);
+    // console.log('URL1: ' + baseUrl + accountCode + resource);
     return baseUrl + accountCode + resource + '.xml';
 };
 
@@ -51,8 +51,8 @@ const getSubscriberModificationUrl = (email) => {
     const accountCode = getAccountCode();
     const resource = getSubscriberResource();
     const encodedSubscriberId = encodeSubscriberId(email);
-    console.log('URL 2: ' + baseUrl + accountCode + resource + encodedSubscriberId + '.xml');
-    return baseUrl + accountCode + resource + encodedSubscriberId + '.xml';
+    // console.log('URL 2: ' + baseUrl + accountCode + resource + encodedSubscriberId + '.xml?send_notifications=false');
+    return baseUrl + accountCode + resource + encodedSubscriberId + '.xml?send_notifications=false';
 
 };
 
@@ -78,7 +78,7 @@ const getResponseSubmissionUrl = (email) => {
     const subscriberResource = getSubscriberResource();
     const responseResource = getResponseResource();
     const encodedSubscriberId = encodeSubscriberId(email);
-    console.log('URL3: ' + baseUrl + accountCode + subscriberResource + encodedSubscriberId + responseResource);
+    // console.log('URL3: ' + baseUrl + accountCode + subscriberResource + encodedSubscriberId + responseResource);
 
     return baseUrl + accountCode + subscriberResource + encodedSubscriberId + responseResource + '.xml?send_notifications=false';
 };

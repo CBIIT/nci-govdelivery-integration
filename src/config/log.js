@@ -13,7 +13,7 @@ logger.add(logger.transports.Console, {
 });
 
 logger.add(logger.transports.File, {
-    filename: process.env.NODE_LOG_FILE_API,
+    filename: process.env.NODE_LOG_FILE_GOVDEL,
     maxsize: rotationSize,
     timestamp: function () {
         return new Date().toLocaleString();
