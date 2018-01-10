@@ -1,9 +1,9 @@
-const { config, sendReport } = require('../../constants');
+const { config } = require('../../constants');
+const mailer = require('../config/mailer');
 const { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareResponseSubmissionRequest } = require('../resources/govdelResources');
 const { getUsers } = require('../connectors/vdsConnector');
 const mongoConnector = require('../connectors/mongoConnector');
 const request = require('request');
-//const rp = require('request-promise');
 const logger = require('winston');
 global.report = '';
 
@@ -29,39 +29,51 @@ const logToReport = (str) => {
 
 const removeAllSubscribers = async () => {
 
-    const ops = [];
+    return new Promise(async (resolve, reject) => {
+        const ops = [];
 
-    const connection = await mongoConnector.getConnection();
-    logger.info(`Connecting to ${config.db.users_collection} collection`);
-    const collection = connection.collection(config.db.users_collection);
+        logger.info('Requesting local DB connection');
+        const connection = await mongoConnector.getConnection();
+        logger.info(`Connecting to ${config.db.users_collection} collection`);
+        const collection = connection.collection(config.db.users_collection);
 
-    const allUsers = await collection.find().toArray() || [];
+        logger.info('Get all subscribers');
+        const allUsers = await collection.find().toArray() || [];
 
-    allUsers.forEach(user => {
-        ops.push({
-            deleteOne:
-                {
-                    filter: { uniqueidentifier: user.uniqueidentifier }
-                }
+        allUsers.forEach(user => {
+            ops.push({
+                deleteOne:
+                    {
+                        filter: { uniqueidentifier: user.uniqueidentifier }
+                    }
+            });
         });
-    });
 
-    if (ops.length > 0) {
-        await collection.bulkWrite(ops);
-    }
-    await mongoConnector.releaseConnection();
-
-    for (let user of allUsers) {
-        await throttle();
-        console.log('making request now');
-        try {
-            request.delete(prepareSubscriberRemoveRequest(user.email), callback);
-            // callbacks++;
-        } catch (error) {
-            logToReport(error);
-            console.log(error);
+        logger.info('Delete all subscribers from local DB');
+        if (ops.length > 0) {
+            await collection.bulkWrite(ops);
         }
-    }
+        logger.info('Releasing local DB connection');
+        await mongoConnector.releaseConnection();
+
+        logger.info('Starting to delete remote subscribers');
+        for (let user of allUsers) {
+            // Use throttle to send up to 100 requests in parallel.
+            await throttle(100);
+            logger.info(`making request to delete ${user.email}`);
+            try {
+                request.delete(prepareSubscriberRemoveRequest(user.email), callback);
+            } catch (error) {
+                logToReport(error);
+                logger.error(error);
+                reject(error);
+            }
+        }
+        // make sure all remote requests are completed before resolving
+        await waitForCallbacks();
+        logger.info('Subscriber removal completed');
+        resolve();
+    });
 
 };
 
@@ -92,24 +104,20 @@ const compareSubscriberLists = (leftList, rightList) => {
     let right = rightList.shift();
     let counter = 0;
     while (left || right) {
-        right = right.document;
-        console.log(`${++counter}: ${left.email} - ${right.email}`);
+        // console.log(`${++counter}: ${left.email} - ${right.email}`);
         if (left && right && left.email === right.email) {
             // Check for changes in any of the record fields
             if (left.status !== right.status || left.division !== right.division || left.building !== right.building) {
                 toUpdate.push(left); // actual
                 // toRemove.push(left);
             }
-            console.log('here1');
             left = leftList.shift();
             right = rightList.shift();
         } else if (right && (!left || left.email > right.email)) {
-            console.log('here2');
             // subscriber has to be removed
             toRemove.push(right);
             right = rightList.shift();
         } else if (left && (!right || left.email < right.email)) {
-            console.log('here3');
             // subscriber has to be added
             toAdd.push(left); // actual
             // toRemove.push(left);
@@ -127,13 +135,24 @@ const reloadAllSubscribers = async () => {
     logToReport('Reloading all subscribers');
     try {
         logToReport('1. Remove all subscribers ');
-        // await removeAllSubscribers();
+        logger.info('Removing all subscribers');
+        try {
+            await removeAllSubscribers();
+        } catch (error) {
+            logger.error(`Failed to remove all subscribers: ${error}`);
+        }
+
 
         logToReport('2. Load all subscribers in local database');
+        logger.info('Starting load of all subscribers in local DB');
+        logger.info('Requesting local DB connection');
+
         const connection = await mongoConnector.getConnection();
+
         logger.info(`Connecting to ${config.db.users_collection} collection`);
         const collection = connection.collection(config.db.users_collection);
 
+        logger.info('Getting all subscribers from source');
         const usersFromCurrentVds = await getUsers('nci');
         let ops = [];
         usersFromCurrentVds.forEach(user => {
@@ -141,7 +160,7 @@ const reloadAllSubscribers = async () => {
                 ops.push({
                     insertOne:
                         {
-                            user
+                            document: user
                         }
                 });
             } else {
@@ -150,32 +169,36 @@ const reloadAllSubscribers = async () => {
             }
         });
 
+        logger.info('Storing all subscribers to local DB');
         if (ops.length > 0) {
             await collection.bulkWrite(ops);
         }
+        logger.info('Releasing local DB connection');
         await mongoConnector.releaseConnection();
 
         logToReport('3. Load all subscribers into remote database');
+        logger.info('Loading all subscribers into remote DB');
         for (const user of usersFromCurrentVds) {
             if (validEntry(user)) {
                 logger.info(`adding ${user.email}`);
                 try {
-                    await throttle();
+                    // Use throttle to send up to 100 requests in parallel.
+                    await throttle(100);
                     const subCreateRequest = prepareSubscriberCreateRequest(user.email);
                     request.post(subCreateRequest, ((error, response, body) => {
-                        if (!error) {
+                        if (!error && response.statusCode === 200) {
                             request.put(prepareResponseSubmissionRequest(user), callback);
                         } else {
-                            logger.error(`Failed to add ${user.email} in GovDelivery.`);
-                            logToReport(`Failed to add ${user.email} in GovDelivery`);
-                            unlock();
+                            logger.error(`Failed to add ${user.email} in GovDelivery. error  ${error}, code: ${response ? response.statusCode : 'N/A'}, body: ${body || ''}`);
+                            logToReport(`Failed to add ${user.email} in GovDelivery. error  ${error}, code: ${response ? response.statusCode : 'N/A'}, body: ${body || ''}`);
+                            releaseCallback();
                         }
                     })
                     );
                 } catch (error) {
                     logger.error(`Failed at update of ${user.email}`);
                     logToReport(`Failed at update of ${user.email}`);
-                    await sendReport();
+                    await mailer.sendReport();
                     process.exit(1);
                 }
             }
@@ -186,12 +209,15 @@ const reloadAllSubscribers = async () => {
     }
 };
 
+/**
+ * Compares local and remote subscriber records to find missing records on the remote
+ */
+const findMissingSubscribersInRemote = () => {
+
+};
+
 const updateSubscribers = async () => {
     logToReport('Starting subscriber update on ' + Date().toLocaleString());
-
-    // const toAdd = [];
-    // const toUpdate = [];
-    // const toRemove = [];
 
     const connection = await mongoConnector.getConnection();
     logger.info(`Connecting to ${config.db.users_collection} collection`);
@@ -203,31 +229,9 @@ const updateSubscribers = async () => {
     logger.info('Retrieving user set from previous update');
     const usersFromPreviousUpdate = await collection.find().sort({ email: 1 }).toArray() || [];
 
-    // let left = usersFromCurrentVds.shift();
-    // let right = usersFromPreviousUpdate.shift();
     logger.info('Comparing subscriber lists');
     const [toAdd, toUpdate, toRemove] = compareSubscriberLists(usersFromCurrentVds, usersFromPreviousUpdate);
 
-    // while (left || right) {
-    //     if (left && right && left.email === right.email) {
-    //         // Check for changes in any of the record fields
-    //         if (left.status !== right.status || left.division !== right.division || left.building !== right.building) {
-    //             toUpdate.push(left); // actual
-    //             // toRemove.push(left);
-    //         }
-    //         left = usersFromCurrentVds.shift();
-    //         right = usersFromPreviousUpdate.shift();
-    //     } else if (right && (!left || left.email > right.email)) {
-    //         // subscriber has to be removed
-    //         toRemove.push(right);
-    //         right = usersFromPreviousUpdate.shift();
-    //     } else if (left && (!right || left.email < right.email)) {
-    //         // subscriber has to be added
-    //         toAdd.push(left); // actual
-    //         // toRemove.push(left);
-    //         left = usersFromCurrentVds.shift();
-    //     }
-    // }
     logToReport(toAdd.length + ' users to add.');
     logToReport(toUpdate.length + ' users to update.');
     logToReport(toRemove.length + ' users to remove.');
@@ -245,32 +249,19 @@ const updateSubscribers = async () => {
     for (const user of toRemove) {
         logger.info(`removing ${user.email}`);
         try {
-            // await throttle();
             await lock();
             await collection.deleteOne(
                 {
                     filter: { uniqueidentifier: user.uniqueidentifier }
                 });
-            // callbacks++;
             request.delete(prepareSubscriberRemoveRequest(user.email), callback);
         } catch (error) {
             logger.error(`Failed at removal of ${user.email}`);
             logToReport(`Failed at removal of ${user.email}`);
-            await sendReport();
+            await mailer.sendReport();
             process.exit(1);
         }
     }
-
-    // const ops = [];
-
-    // toRemove.forEach(user => {
-    //     ops.push({
-    //         deleteOne:
-    //             {
-    //                 filter: { uniqueidentifier: user.uniqueidentifier }
-    //             }
-    //     });
-    // });
 
     if (toUpdate.length > 0) {
         logger.info('Start update of subscribers');
@@ -286,33 +277,16 @@ const updateSubscribers = async () => {
                         replacement: user,
                         upsert: true
                     });
-                // callbacks++;
                 request.put(prepareResponseSubmissionRequest(user), callback);
 
             } catch (error) {
                 logger.error(`Failed at update of ${user.email}`);
                 logToReport(`Failed at update of ${user.email}`);
-                await sendReport();
+                await mailer.sendReport();
                 process.exit(1);
             }
         }
     }
-
-    // toUpdate.forEach(user => {
-    //     if (validEntry(user)) {
-    //         ops.push({
-    //             replaceOne:
-    //                 {
-    //                     filter: { uniqueidentifier: user.uniqueidentifier },
-    //                     replacement: user,
-    //                     upsert: true
-    //                 }
-    //         });
-    //     } else {
-    //         logger.error(`user ${user.email} has invalid entries among ${getAnswers(user)}`);
-    //         logToReport(`user ${user.email} has invalid entries among ${getAnswers(user)}`);
-    //     }
-    // });
 
     if (toAdd.length > 0) {
         logger.info('Start addition of subscribers');
@@ -322,148 +296,90 @@ const updateSubscribers = async () => {
             logger.info(`adding ${user.email}`);
             try {
                 await lock();
-                await collection.insertOne(
-                    {
-                        user
-                    }
-                );
+                await collection.insertOne(user);
                 const subCreateRequest = prepareSubscriberCreateRequest(user.email);
                 request.post(subCreateRequest, ((error, response, body) => {
-                    if (response.statusCode === 200) {
+                    if (!error && response.statusCode === 200) {
                         request.put(prepareResponseSubmissionRequest(user), callback);
                     } else {
-                        logger.error(`Failed to add ${user.email} in GovDelivery.`);
-                        logToReport(`Failed to add ${user.email} in GovDelivery`);
-                        unlock();
+                        logger.error(`Failed to add ${user.email} in GovDelivery. error  ${error}, code: ${response ? response.statusCode : 'N/A'}, body: ${body || ''}`);
+                        logToReport(`Failed to add ${user.email} in GovDelivery. error  ${error}, code: ${response ? response.statusCode : 'N/A'}, body: ${body || ''}`);
+                        releaseCallback();
                     }
                 })
                 );
             } catch (error) {
                 logger.error(`Failed at update of ${user.email}`);
                 logToReport(`Failed at update of ${user.email}`);
-                await sendReport();
+                await mailer.sendReport();
                 process.exit(1);
             }
         }
     }
 
-    // toAdd.forEach(user => {
-    //     if (validEntry(user)) {
-    //         ops.push({
-    //             insertOne:
-    //                 {
-    //                     document: user
-    //                 }
-    //         });
-    //     } else {
-    //         logger.error(`user ${user.email} has invalid entries among ${getAnswers(user)}`);
-    //         logToReport(`user ${user.email} has invalid entries among ${getAnswers(user)}`);
-    //     }
-    // });
-
-    // if (ops.length > 0) {
-    //     await collection.bulkWrite(ops);
-    // }
     await mongoConnector.releaseConnection();
-
-    // for (let user of toAdd) {
-    //     if (validEntry(user)) {
-    //         // await delayFor(10);
-    //         try {
-    //             const subCreateRequest = prepareSubscriberCreateRequest(user.email);
-    //             await throttle();
-    //             callbacks++;
-    //             logger.info(`Sending a new subscriber request for ${user.email}, callbacks: ${callbacks}`);
-    //             const response = await request.post(subCreateRequest);
-    //             callbacks--;
-    //             if (response.statusCode === 200) {
-    //                 await throttle();
-    //                 callbacks++;
-    //                 logger.info(`Sending responses for subscriber ${user.email}, callbacks: ${callbacks}`);
-    //                 request.put(prepareResponseSubmissionRequest(user), callback);
-    //             }
-    //         } catch (error) {
-    //             logToReport(error);
-    //             logger.error(error);
-    //         }
-    //     }
-    // }
-
-    // An update to a subscriber can only be a change in the question responses. Hence, we call the response submission API. 
-    // for (let user of toUpdate) {
-    //     if (validEntry(user)) {
-    //         // await delayFor(10);
-    //         try {
-    //             await throttle();
-    //             callbacks++;
-    //             request.put(prepareResponseSubmissionRequest(user), callback);
-    //         } catch (error) {
-    //             logToReport(error);
-    //             logger.error(error);
-    //         }
-    //     }
-    // }
-
-    //     for (let user of toRemove) {
-    //         // await delayFor(2000);
-    //         console.log(`removing user ${user.email}`);
-    //         try {
-    //             await throttle();
-    //             callbacks++;
-    //             request.delete(prepareSubscriberRemoveRequest(user.email), callback);
-    //         } catch (error) {
-    //             logToReport(error);
-    //             console.log(error);
-    //         }
-    //     }
-
-    // } catch (error) {
-    //     logger.error('FATAL ERROR: ' + error);
-    //     logToReport(error);
-    //     process.exitCode = 1;
-    // }
-
 };
 
 const getAnswers = (user) => {
     return `Status: ${user.status}, Division: ${user.division}, Building: ${user.building}`;
 };
 
-// const delayFor = time => new Promise((resolve, reject) =>
-//     setTimeout(() => resolve(true), time)
-// );
-
-const throttle = () => {
+/**
+ * Waits until outstanding callbacks fall under a specified number and then reserves a callback.
+ * This can be used in situations when the number of parallel requests should be limited to avoid overload of the remote.
+ */
+const throttle = (maxCallbacks) => {
     return new Promise(resolve => {
-        (function waitForCallbacks() {
-            if (callbacks < 100) {
+        (function wait() {
+            if (callbacks < maxCallbacks) {
                 callbacks++;
-                return resolve();
+                resolve();
             } else {
-                console.log('wait more');
-                setTimeout(waitForCallbacks, 100);
+                console.log('waiting for throttled resources');
+                setTimeout(wait, maxCallbacks);
             }
         })();
     });
 };
 
+/**
+ * Waits until all outstanding callbacks have been called and then reserves a callback.
+ * This can be used in situations when requests have to be made one at a time.
+ */
 const lock = () => {
     return new Promise(resolve => {
-        (function waitForCallbacks() {
+        (function wait() {
             if (callbacks === 0) {
                 callbacks++;
-                return resolve();
+                resolve();
             } else {
-                console.log('wait more');
-                setTimeout(waitForCallbacks, 100);
+                console.log('waiting for lock');
+                setTimeout(wait, 100);
             }
         })();
     });
 };
 
-const unlock = () => {
+const releaseCallback = () => {
     callbacks--;
 };
+
+/**
+ * Waits until all outstanding callbacks have been called.
+ */
+const waitForCallbacks = () => {
+    return new Promise(resolve => {
+        (function wait() {
+            if (callbacks === 0) {
+                resolve();
+            } else {
+                console.log('waiting for completion');
+                setTimeout(wait, 100);
+            }
+        })();
+    });
+};
+
 
 const validEntry = (user) => {
     if (!config.govdel.status_answers[user.status]) {
@@ -487,14 +403,11 @@ const validEntry = (user) => {
 
 const callback = (error, response, body) => {
 
-    unlock();
+    releaseCallback();
     console.log(`callback! ... ${callbacks} callbacks outstanding.`);
-    // console.log('unlocking');
-    // unlock();
     if (error || response.statusCode !== 200) {
-        logger.error(`error  ${error}, code: ${response && response.statusCode || 'N/A'}, ${response && response.body || ''}`);
-
-        logToReport(`error  ${error}, code: ${response && response.statusCode || 'N/A'}, ${response && response.body || ''}`);
+        logger.error(`error  ${error}, code: ${response ? response.statusCode : 'N/A'}, body: ${body || ''}`);
+        logToReport(`error  ${error}, code: ${response ? response.statusCode : 'N/A'}, body: ${body || ''}`);
     }
 };
 

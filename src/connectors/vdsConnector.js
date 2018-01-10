@@ -18,8 +18,8 @@ const getUsers = (ic) => {
         //     division: 'CSSI',
         //     building: 'BG 10A'
         // }]);
-        
-        
+
+
         const nciSubFilter = '(NIHORGACRONYM=' + ic + ')';
         // const inactiveFilter = '(!(distinguishedName=*InActive*))';
         // const dnFilter = '(distinguishedName=*OU=Users,OU=*,OU=NIH,OU=AD,DC=nih,DC=gov)';
@@ -42,6 +42,7 @@ const getUsers = (ic) => {
         };
         var counter = 0;
         const ldapClient = await getLdapClient();
+        let truncate = 10; //for testing
 
         ldapClient.bind(config.vds.dn, config.vds.password, (err) => {
 
@@ -56,13 +57,14 @@ const getUsers = (ic) => {
                 if (err) {
                     logger.error('error: ' + err.code);
                 }
-                ldapRes.on('searchEntry', ({object}) => {
+                ldapRes.on('searchEntry', ({ object }) => {
                     if (++counter % 10000 === 0) {
                         logger.info(counter + ' records found and counting...');
                     }
                     // let obj = util.convertBase64Fields(entry);
                     // users.push(obj);
                     let email = getEmail(object);
+                    // if (truncate-- > 0 && email) {
                     if (email) {
                         users.push({
                             email: email,
@@ -94,7 +96,7 @@ const getUsers = (ic) => {
                 });
             });
         });
-        
+
     });
 };
 

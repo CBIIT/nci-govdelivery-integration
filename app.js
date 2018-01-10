@@ -1,5 +1,5 @@
 const program = require('commander');
-const { config, sendReport } = require('./constants');
+const { config } = require('./constants');
 const { reloadAllSubscribers, updateSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly, test } = require('./src/model/model');
 const mailer = require('./src/config/mailer');
 const logger = require('./src/config/log');
@@ -10,8 +10,7 @@ process.on('beforeExit', async code => {
         process.exit();
     }
     // send the update report
-    // sendReport();
-    mailer.send(config.mail.admin_list, config.mail.subjectPrefix + 'GevDelivery Update Report', global.report);
+    mailer.sendReport();
     end = true;
     logger.info('Process exit ' + code);
 });
@@ -32,7 +31,7 @@ program
     .description('Remove all subscribers')
     .action(removeAllSubscribers);
 program
-    .command('reloadLocalUserBaseOnly')
+    .command('reloadLocalSubscriberBaseOnly')
     .description('Reload Local User Base (No GovDel upload)')
     .action(reloadLocalSubscriberBaseOnly);
 program
