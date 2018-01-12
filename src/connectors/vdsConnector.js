@@ -9,31 +9,8 @@ const tlsOptions = {
 const getUsers = (ic) => {
 
     return new Promise(async (resolve, reject) => {
-
-        // resolve([{
-        //     email: 'anita.kalavar@nih.gov',
-        //     uniqueidentifier: '2002124076',
-        //     distinguishedName: 'CN=yankovsr,OU=Users,OU=NCI,OU=NIH,OU=AD,DC=nih,DC=gov',
-        //     status: 'CONTRACTOR',
-        //     division: 'CSSI',
-        //     building: 'BG 10A'
-        // }]);
-
-
         const nciSubFilter = '(NIHORGACRONYM=' + ic + ')';
-        // const inactiveFilter = '(!(distinguishedName=*InActive*))';
-        // const dnFilter = '(distinguishedName=*OU=Users,OU=*,OU=NIH,OU=AD,DC=nih,DC=gov)';
-        // const noAdAcctFilter = '(!(NIHADACCTREQ=N))';
-        // const guestFilter = '(!(ORGANIZATIONALSTAT=GUEST))';
-        // const volunteerFilter = '(!(ORGANIZATIONALSTAT=VOLUNTEER))';
-
-
         const filter = ('(&' + nciSubFilter + ')');
-
-        // const filter = '(&(NIHORGACRONYM=' + ic + ') (!(vddn=*_InActive*)))';
-
-        // const filter = '\'(&(NIHORGACRONYM=NCI) (!(vddn=*_InActive*)))\'';
-
         var userSearchOptions = {
             scope: 'sub',
             attributes: config.vds.user_attributes,
@@ -42,8 +19,6 @@ const getUsers = (ic) => {
         };
         var counter = 0;
         const ldapClient = await getLdapClient();
-        let truncate = 10; //for testing
-
         ldapClient.bind(config.vds.dn, config.vds.password, (err) => {
 
             if (err) {
@@ -61,24 +36,22 @@ const getUsers = (ic) => {
                     if (++counter % 10000 === 0) {
                         logger.info(counter + ' records found and counting...');
                     }
-                    // let obj = util.convertBase64Fields(entry);
-                    // users.push(obj);
-                    let email = getEmail(object);
-                    // if (truncate-- > 0 && email) {
-                    if (email) {
+                    const email = getEmail(object);
+                    const dn = object.distinguishedName;
+                    if (email && !dn.includes('_InActive')) {
                         users.push({
                             email: email,
                             uniqueidentifier: object.UNIQUEIDENTIFIER,
                             distinguishedName: object.distinguishedName,
                             status: object.ORGANIZATIONALSTAT || 'N/A',
                             division: getDivision(object),
-                            building: getBuilding(object)
+                            building: getBuilding(object),
                         });
                     }
+
                 });
                 ldapRes.on('searchReference', () => { });
                 ldapRes.on('page', () => {
-                    // logger.info('page end');
                 });
                 ldapRes.on('error', (err) => {
                     ldapClient.destroy();
@@ -147,12 +120,26 @@ const getLdapClient = async () => {
 };
 
 const getEmail = (obj) => {
-    const nedEmail = obj.MAIL && obj.MAIL.trim() !== '' ? obj.MAIL.trim() : null;
-    // const adEmail = obj.NIHPRIMARYSMTP && obj.NIHPRIMARYSMTP.trim() !== '' ? obj.NIHPRIMARYSMTP.trim() : null;
 
-    return nedEmail;
+    let result = null;
 
-    //return nedEmail ? nedEmail : adEmail;
+    const proxyEmails = obj.proxyAddresses;
+    if (proxyEmails) {
+        if (Array.isArray(proxyEmails)) {
+            proxyEmails.forEach(email => {
+                const data = email.split(':');
+                if (data[0] === 'SMTP') {
+                    result = data[1];
+                }
+            });
+        } else {
+            const data = proxyEmails.split(':');
+            if (data[0] === 'SMTP') {
+                result = data[1];
+            }
+        }
+    }
+    return result;
 };
 
 const getDivision = (obj) => {

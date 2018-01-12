@@ -5,6 +5,8 @@ const { getUsers } = require('../connectors/vdsConnector');
 const mongoConnector = require('../connectors/mongoConnector');
 const request = require('request');
 const logger = require('winston');
+const fs = require('fs');
+
 global.report = '';
 
 let callbacks = 0;
@@ -22,6 +24,7 @@ const test = async () => {
 
     console.log('at end of test');
 };
+
 
 const logToReport = (str) => {
     global.report += '<p>' + str + '</p>';

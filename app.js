@@ -10,7 +10,7 @@ process.on('beforeExit', async code => {
         process.exit();
     }
     // send the update report
-    mailer.sendReport();
+    // mailer.sendReport();
     end = true;
     logger.info('Process exit ' + code);
 });
