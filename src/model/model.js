@@ -255,7 +255,7 @@ const updateSubscribers = async () => {
             await lock();
             await collection.deleteOne(
                 {
-                    filter: { uniqueidentifier: user.uniqueidentifier }
+                    uniqueidentifier: user.uniqueidentifier
                 });
             request.delete(prepareSubscriberRemoveRequest(user.email), callback);
         } catch (error) {
@@ -275,11 +275,10 @@ const updateSubscribers = async () => {
             try {
                 await lock();
                 await collection.replaceOne(
-                    {
-                        filter: { uniqueidentifier: user.uniqueidentifier },
-                        replacement: user,
-                        upsert: true
-                    });
+                    { uniqueidentifier: user.uniqueidentifier },
+                    user,
+                    { upsert: true }
+                );
                 request.put(prepareResponseSubmissionRequest(user), callback);
 
             } catch (error) {

@@ -39,6 +39,7 @@ const getUsers = (ic) => {
                     const email = getEmail(object);
                     const dn = object.distinguishedName;
                     if (email && !dn.includes('_InActive')) {
+
                         users.push({
                             email: email,
                             uniqueidentifier: object.UNIQUEIDENTIFIER,
