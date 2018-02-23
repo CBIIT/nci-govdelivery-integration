@@ -2,7 +2,7 @@
 const { config } = require('../../constants');
 const mailer = require('../config/mailer');
 const { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareResponseSubmissionRequest } = require('../resources/govdelResources');
-const { getUsersFromUserInfo } = require('../connectors/userInfoConnector');
+const { getUsers } = require('../connectors/userInfoConnector');
 const mongoConnector = require('../connectors/mongoConnector');
 const request = require('request');
 const logger = require('winston');
@@ -87,7 +87,7 @@ const reloadLocalSubscriberBaseOnly = async () => {
     const collection = connection.collection(config.db.users_collection);
 
     try {
-        const usersFromCurrentVds = await getUsersFromUserInfo('nci');
+        const usersFromCurrentVds = await getUsers('nci');
         await collection.remove({});
         await collection.insertMany(usersFromCurrentVds);
         mongoConnector.releaseConnection();
@@ -155,7 +155,7 @@ const reloadAllSubscribers = async () => {
         const collection = connection.collection(config.db.users_collection);
 
         logger.info('Getting all subscribers from source');
-        const usersFromCurrentVds = await getUsersFromUserInfo('nci');
+        const usersFromCurrentVds = await getUsers('nci');
         let ops = [];
         usersFromCurrentVds.forEach(user => {
             if (validEntry(user)) {
@@ -219,7 +219,7 @@ const updateSubscribers = async () => {
     const collection = connection.collection(config.db.users_collection);
 
     logger.info('Retrieving users from UserInfo');
-    const usersFromCurrentVds = await getUsersFromUserInfo('nci');
+    const usersFromCurrentVds = await getUsers('nci');
     logger.info('Retrieving user set from previous update');
     const usersFromPreviousUpdate = await collection.find().sort({ email: 1 }).toArray() || [];
 
