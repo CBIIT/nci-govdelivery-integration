@@ -1,7 +1,8 @@
+'use strict';
 const { config } = require('../../constants');
 const mailer = require('../config/mailer');
 const { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareResponseSubmissionRequest } = require('../resources/govdelResources');
-const { getUsers } = require('../connectors/vdsConnector');
+const { getUsersFromUserInfo } = require('../connectors/userInfoConnector');
 const mongoConnector = require('../connectors/mongoConnector');
 const request = require('request');
 const logger = require('winston');
@@ -85,16 +86,14 @@ const reloadLocalSubscriberBaseOnly = async () => {
     logger.info(`Connecting to ${config.db.users_collection} collection`);
     const collection = connection.collection(config.db.users_collection);
 
-    const usersFromCurrentVds = await getUsers('nci');
-
     try {
+        const usersFromCurrentVds = await getUsersFromUserInfo('nci');
         await collection.remove({});
         await collection.insertMany(usersFromCurrentVds);
         mongoConnector.releaseConnection();
     } catch (error) {
         logger.error(error);
     }
-
 };
 
 const compareSubscriberLists = (leftList, rightList) => {
@@ -156,7 +155,7 @@ const reloadAllSubscribers = async () => {
         const collection = connection.collection(config.db.users_collection);
 
         logger.info('Getting all subscribers from source');
-        const usersFromCurrentVds = await getUsers('nci');
+        const usersFromCurrentVds = await getUsersFromUserInfo('nci');
         let ops = [];
         usersFromCurrentVds.forEach(user => {
             if (validEntry(user)) {
@@ -212,13 +211,6 @@ const reloadAllSubscribers = async () => {
     }
 };
 
-/**
- * Compares local and remote subscriber records to find missing records on the remote
- */
-const findMissingSubscribersInRemote = () => {
-
-};
-
 const updateSubscribers = async () => {
     logToReport('Starting subscriber update on ' + Date().toLocaleString());
 
@@ -226,9 +218,8 @@ const updateSubscribers = async () => {
     logger.info(`Connecting to ${config.db.users_collection} collection`);
     const collection = connection.collection(config.db.users_collection);
 
-    logger.info('Retrieving users from VDS');
-    // const usersFromCurrentVds = await getUsers('nci');        
-    const usersFromCurrentVds = await getUsers('nci');
+    logger.info('Retrieving users from UserInfo');
+    const usersFromCurrentVds = await getUsersFromUserInfo('nci');
     logger.info('Retrieving user set from previous update');
     const usersFromPreviousUpdate = await collection.find().sort({ email: 1 }).toArray() || [];
 
@@ -241,12 +232,9 @@ const updateSubscribers = async () => {
 
     logger.info(toAdd.length + ' to add');
     logger.info(toUpdate.length + ' to update');
-    // console.log(toAdd.join('\n'));
     logger.info(toRemove.length + ' to remove');
-    // console.log(toRemove.join('\n'));
-    // });
 
-    if (toRemove.lenght > 0) {
+    if (toRemove.length > 0) {
         logger.info('Start removal of subscribers');
     }
     for (const user of toRemove) {
@@ -318,7 +306,6 @@ const updateSubscribers = async () => {
             }
         }
     }
-
     await mongoConnector.releaseConnection();
 };
 
@@ -385,7 +372,6 @@ const waitForCallbacks = () => {
 
 const validEntry = (user) => {
     if (!config.govdel.status_answers[user.status]) {
-        console.log(config.govdel.status_answers);
         logger.error(`config.govdel.status_answers[${user.status}] has a problem for ${user.email}`);
         process.exit(2);
     }

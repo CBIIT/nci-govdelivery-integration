@@ -14,7 +14,7 @@ const defaultFromAddress = config.mail.defaultFromAddress;
 const transporter = mailer.createTransport(smtpConfig);
 
 const send = async (recipient, subject, message) => {
-    var mailOptions = {
+    const mailOptions = {
         from: defaultFromAddress,
         replyTo: defaultFromAddress,
         to: recipient,

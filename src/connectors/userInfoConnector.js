@@ -1,3 +1,4 @@
+'use strict';
 const { config } = require('../../constants');
 const logger = require('winston');
 const ldap = require('ldapjs');
@@ -6,18 +7,62 @@ const tlsOptions = {
     ca: [fs.readFileSync(config.vds.vdscert)]
 };
 
+const rp = require('request-promise');
+
+const getUsersFromUserInfo = async (ic) => {
+
+    return new Promise(async (resolve, reject) => {
+        const users = [];
+
+        const userInfoOptions = {
+            uri: `${config.userinfo.users_url}/${ic}`,
+            auth: {
+                user: config.userinfo.user,
+                pass: config.userinfo.password
+            },
+            headers: {
+                'Accept': 'application/json'
+            },
+            json: true // Automatically parses the JSON string in the response
+        };
+
+        // return promise
+        try {
+            const userData = await rp(userInfoOptions);
+            userData.forEach(user => {
+                const email = getEmail(user);
+                const dn = user.distinguishedName;
+                if (email && !dn.includes('_InActive')) {
+
+                    users.push({
+                        email: email,
+                        uniqueidentifier: user.UNIQUEIDENTIFIER,
+                        distinguishedName: user.distinguishedName,
+                        status: user.ORGANIZATIONALSTAT || 'N/A',
+                        division: getDivision(user),
+                        building: getBuilding(user),
+                    });
+                }
+            });
+            resolve(users.sort(compareUsers));
+        } catch (error) {
+            reject(error);
+        }
+    });
+};
+
 const getUsers = (ic) => {
 
     return new Promise(async (resolve, reject) => {
         const nciSubFilter = '(NIHORGACRONYM=' + ic + ')';
         const filter = ('(&' + nciSubFilter + ')');
-        var userSearchOptions = {
+        const userSearchOptions = {
             scope: 'sub',
             attributes: config.vds.user_attributes,
             filter: filter,
             paged: true
         };
-        var counter = 0;
+        let counter = 0;
         const ldapClient = await getLdapClient();
         ldapClient.bind(config.vds.dn, config.vds.password, (err) => {
 
@@ -26,7 +71,7 @@ const getUsers = (ic) => {
                 ldapClient.destroy();
                 reject(Error(err.message));
             }
-            var users = [];
+            const users = [];
             logger.info('starting search');
             ldapClient.search(config.vds.searchBase, userSearchOptions, (err, ldapRes) => {
                 if (err) {
@@ -176,4 +221,4 @@ const getBuilding = (obj) => {
 };
 
 
-module.exports = { getUsers };
+module.exports = { getUsersFromUserInfo };

@@ -1,4 +1,4 @@
-var logger = require('winston');
+const logger = require('winston');
 
 const rotationSize = 100000000; // Bytes
 const logLevel = process.env.NODE_ENV === 'development' ? 'debug' : 'info';
