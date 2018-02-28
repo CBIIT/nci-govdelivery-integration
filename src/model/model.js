@@ -13,17 +13,17 @@ global.report = '';
 let callbacks = 0;
 
 const test = async () => {
-    console.log('starting test');
+    console.log('starting test.');
 
     setTimeout(() => {
         callback();
     }, 1000);
 
     const callback = () => {
-        console.log('callback in test');
+        console.log('callback in test.');
     };
 
-    console.log('at end of test');
+    console.log('at end of test.');
 };
 
 
