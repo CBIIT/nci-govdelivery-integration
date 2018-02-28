@@ -28,7 +28,8 @@ const test = async () => {
 
 
 const logToReport = (str) => {
-    global.report += '<p>' + str + '</p>';
+
+    global.report += str + '<br/>';
 };
 
 const removeAllSubscribers = async () => {
@@ -236,6 +237,7 @@ const updateSubscribers = async () => {
 
     if (toRemove.length > 0) {
         logger.info('Start removal of subscribers');
+        logToReport('<p><strong>Removing the following subscribers:</strong></p>');
     }
     for (const user of toRemove) {
         logger.info(`removing ${user.email}`);
@@ -245,6 +247,7 @@ const updateSubscribers = async () => {
                 {
                     uniqueidentifier: user.uniqueidentifier
                 });
+            logToReport(user.email);
             request.delete(prepareSubscriberRemoveRequest(user.email), callback);
         } catch (error) {
             logger.error(`Failed at removal of ${user.email}`);
@@ -256,6 +259,7 @@ const updateSubscribers = async () => {
 
     if (toUpdate.length > 0) {
         logger.info('Start update of subscribers');
+        logToReport('<p><strong>Updating the following subscribers:</strong></p>');
     }
     for (const user of toUpdate) {
         if (validEntry(user)) {
@@ -267,6 +271,7 @@ const updateSubscribers = async () => {
                     user,
                     { upsert: true }
                 );
+                logToReport(user.email);
                 request.put(prepareResponseSubmissionRequest(user), callback);
 
             } catch (error) {
@@ -280,16 +285,18 @@ const updateSubscribers = async () => {
 
     if (toAdd.length > 0) {
         logger.info('Start addition of subscribers');
+        logToReport('<p><strong>Adding the following subscribers:</strong></p>');
     }
     for (const user of toAdd) {
         if (validEntry(user)) {
-            logger.info(`adding ${user.email}`);
+            logger.info(`${user.email}, `);
             try {
                 await lock();
                 await collection.insertOne(user);
                 const subCreateRequest = prepareSubscriberCreateRequest(user.email);
                 request.post(subCreateRequest, ((error, response, body) => {
                     if (!error && response.statusCode === 200) {
+                        logToReport(user.email);
                         request.put(prepareResponseSubmissionRequest(user), callback);
                     } else {
                         logger.error(`Failed to add ${user.email} in GovDelivery. error  ${error}, code: ${response ? response.statusCode : 'N/A'}, body: ${body || ''}`);
@@ -342,7 +349,7 @@ const lock = () => {
                 callbacks++;
                 resolve();
             } else {
-                console.log('waiting for lock');
+                // console.log('waiting for lock');
                 setTimeout(wait, 100);
             }
         })();
