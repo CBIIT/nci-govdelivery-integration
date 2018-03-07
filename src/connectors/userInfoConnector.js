@@ -32,7 +32,7 @@ const getUsers = async (ic) => {
                         email: email,
                         uniqueidentifier: user.UNIQUEIDENTIFIER,
                         distinguishedName: user.distinguishedName,
-                        status: user.ORGANIZATIONALSTAT || 'N/A',
+                        status: user.ORGANIZATIONALSTAT,
                         division: getDivision(user),
                         building: getBuilding(user),
                     });
