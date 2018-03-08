@@ -107,7 +107,6 @@ const compareSubscriberLists = (leftList, rightList) => {
     let right = rightList.shift();
     let counter = 0;
     while (left || right) {
-        // console.log(`${++counter}: ${left.email} - ${right.email}`);
         if (left && right && left.email === right.email) {
             // Check for changes in any of the record fields
             if (left.status !== right.status || left.division !== right.division || left.building !== right.building) {
@@ -234,7 +233,7 @@ const updateSubscribers = async () => {
     logger.info(toAdd.length + ' to add');
     logger.info(toUpdate.length + ' to update');
     logger.info(toRemove.length + ' to remove');
-
+    /*
     if (toRemove.length > 0) {
         logger.info('Start removal of subscribers');
         logToReport('<p><strong>Removing the following subscribers:</strong></p>');
@@ -312,7 +311,7 @@ const updateSubscribers = async () => {
                 process.exit(1);
             }
         }
-    }
+    }*/
     await mongoConnector.releaseConnection();
 };
 

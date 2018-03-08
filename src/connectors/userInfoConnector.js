@@ -9,34 +9,61 @@ const getUsers = async (ic) => {
         const users = [];
 
         const userInfoOptions = {
-            uri: `${config.userinfo.users_url}/${ic}`,
+            method: 'POST',
+            uri: `${config.userinfo.graphql}`,
             auth: {
                 user: config.userinfo.user,
                 pass: config.userinfo.password
             },
             headers: {
-                'Accept': 'application/json'
+                'Content-Type': 'application/graphql'
             },
-            json: true // Automatically parses the JSON string in the response
+            body:
+                `{
+                users(ic: "NCI") {
+                    ned_id,
+                    inactive,
+                    email,
+                    sac,
+                    status,
+                    division,
+                    building
+                }
+            }`
         };
 
         // return promise
         try {
             const userData = await rp(userInfoOptions);
-            userData.forEach(user => {
-                const email = getEmail(user);
-                const dn = user.distinguishedName;
-                if (email && !dn.includes('_InActive')) {
 
+            const userInfoUsers = JSON.parse(userData).data.users;
+            userInfoUsers.forEach(user => {
+
+                if (user.email && !user.inactive) {
                     users.push({
-                        email: email,
-                        uniqueidentifier: user.UNIQUEIDENTIFIER,
-                        distinguishedName: user.distinguishedName,
-                        status: user.ORGANIZATIONALSTAT,
-                        division: getDivision(user),
-                        building: getBuilding(user),
+                        uniqueidentifier: user.ned_id,
+                        email: user.email,
+                        sac: user.sac,
+                        // distinguishedName: user.distinguished_name,
+                        status: user.status,
+                        division: user.division,
+                        building: user.building,
                     });
                 }
+
+                // const email = getEmail(user);
+                // const dn = user.distinguishedName;
+                // if (email && !dn.includes('_InActive')) {
+
+                //     users.push({
+                //         email: email,
+                //         uniqueidentifier: user.UNIQUEIDENTIFIER,
+                //         distinguishedName: user.distinguishedName,
+                //         status: user.ORGANIZATIONALSTAT,
+                //         division: getDivision(user),
+                //         building: getBuilding(user),
+                //     });
+                // }
             });
             resolve(users.sort(compareUsers));
         } catch (error) {
