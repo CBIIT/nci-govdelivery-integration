@@ -30,7 +30,7 @@ const send = async (recipient, subject, message) => {
 };
 
 const sendReport = () => {
-    // send(config.mail.admin_list, config.mail.subjectPrefix + 'GovDelivery Update Report', global.report);
+    send(config.mail.admin_list, config.mail.subjectPrefix + 'GovDelivery Update Report', global.report);
 };
 
 

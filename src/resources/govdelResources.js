@@ -1,5 +1,6 @@
 'use strict';
 const { config } = require('../../constants');
+const logger = require('winston');
 
 const getDefaultTopicCode = () => {
     return config.govdel.nciAllTopicCode;
@@ -114,15 +115,49 @@ const composeResponses = (user) => `
         <answer-id>${config.govdel.division_answers[user.division]}</answer-id>
     </response>
     <response>
+        <question-id>${config.govdel.questions['sac']}</question-id>
+        <answer-id>${config.govdel.sac_answers[user.sac]}</answer-id>
+    </response>
+    <response>
         <question-id>${config.govdel.questions['building']}</question-id>
         <answer-id>${config.govdel.building_answers[user.building]}</answer-id>
     </response>
 </responses>
 `;
 
+
+// const validateResponses = users => {
+//     let response = true;
+
+//     users.forEach (user => {
+//         if (!config.govdel.status_answers[user.status]) {
+//             logger.error(`User ${user.ned_id} | Status ${user.status} is not mapped!`);
+//             response = false;
+//         }
+
+//         if (!config.govdel.division_answers[user.division]) {
+//             logger.error(`User ${user.ned_id} | Division ${user.division} is not mapped!`);
+//             response = false;
+//         }
+
+//         if (!config.govdel.sac_answers[user.sac]) {
+//             logger.error(`User ${user.ned_id} | SAC ${user.sac} is not mapped!`);
+//             response = false;
+//         }
+
+//         if (!config.govdel.building_answers[user.building]) {
+//             logger.error(`User ${user.ned_id} | Building ${user.building} is not mapped!`);
+//             response = false;
+//         }
+
+//     });
+//     return response;
+// };
+
 const prepareSubscriberRemoveRequest = (email) => ({
     url: getSubscriberModificationUrl(email),
-    auth: getAuthenticationObject()
+    auth: getAuthenticationObject(),
+    timeout: 60000
 });
 
 const prepareSubscriberCreateRequest = (email) => {
@@ -136,6 +171,7 @@ const prepareSubscriberCreateRequest = (email) => {
         body: subscriber,
         headers: { 'Content-Type': 'application/xml' },
         auth: auth,
+        timeout: 60000
     };
 };
 
@@ -149,8 +185,9 @@ const prepareResponseSubmissionRequest = (user) => {
         body: responses,
         headers: { 'Content-Type': 'application/xml' },
         auth: auth,
+        timeout: 60000
     };
 
 };
 
-module.exports = { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareResponseSubmissionRequest };
+module.exports = { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareResponseSubmissionRequest};

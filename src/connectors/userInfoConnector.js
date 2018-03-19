@@ -1,5 +1,7 @@
 'use strict';
 const { config } = require('../../constants');
+const { getSubscriberExceptionRecords } = require('./snConnector');
+const logger = require('winston');
 
 const rp = require('request-promise');
 
@@ -20,7 +22,7 @@ const getUsers = async (ic) => {
             },
             body:
                 `{
-                users(ic: "NCI") {
+                users(ic: "${ic}") {
                     ned_id,
                     inactive,
                     email,
@@ -41,34 +43,126 @@ const getUsers = async (ic) => {
 
                 if (user.email && !user.inactive) {
                     users.push({
-                        uniqueidentifier: user.ned_id,
+                        ned_id: user.ned_id,
                         email: user.email,
                         sac: user.sac,
-                        // distinguishedName: user.distinguished_name,
                         status: user.status,
                         division: user.division,
-                        building: user.building,
+                        building: user.building || 'N/A',
                     });
                 }
-
-                // const email = getEmail(user);
-                // const dn = user.distinguishedName;
-                // if (email && !dn.includes('_InActive')) {
-
-                //     users.push({
-                //         email: email,
-                //         uniqueidentifier: user.UNIQUEIDENTIFIER,
-                //         distinguishedName: user.distinguishedName,
-                //         status: user.ORGANIZATIONALSTAT,
-                //         division: getDivision(user),
-                //         building: getBuilding(user),
-                //     });
-                // }
             });
+
+            let subscriberExceptions;
+
+            try {
+                subscriberExceptions = await getSubscriberExceptions();
+                logger.info(`Found ${subscriberExceptions.length} exceptions defined in ServiceNow`);
+            } catch (error) {
+                logger.error(`Failed to get subscriber exceptions | ${error}`);
+            }
+
+            logger.info('Merging VDS and exception lists');
+            mergeSubscriberLists(users, subscriberExceptions || []);
+
             resolve(users.sort(compareUsers));
         } catch (error) {
             reject(error);
         }
+    });
+};
+
+const getSubscriberExceptions = async () => {
+    return new Promise(async (resolve, reject) => {
+
+        logger.info('Getting subscriber exceptions from ServiceNow');
+        let subscriberExceptionRecords;
+        try {
+            subscriberExceptionRecords = await getSubscriberExceptionRecords();
+        } catch (error) {
+            logger.error(`Could not get Subscriber exceptions from ServiceNow | ${error}`);
+            reject(error);
+        }
+
+        let subscriberExceptions = [];
+
+        if (subscriberExceptionRecords) {
+            try {
+                await Promise.all(subscriberExceptionRecords.map(async (record) => {
+
+                    const userInfoOptions = {
+                        method: 'POST',
+                        uri: `${config.userinfo.graphql}`,
+                        auth: {
+                            user: config.userinfo.user,
+                            pass: config.userinfo.password
+                        },
+                        headers: {
+                            'Content-Type': 'application/graphql'
+                        },
+                        body:
+                            `{
+                            user(id: "${record.ned_id}") {
+                                ned_id,
+                                inactive,
+                                email,
+                                sac,
+                                status,
+                                division,
+                                building
+                            }
+                        }`
+                    };
+
+                    const userData = await rp(userInfoOptions);
+                    const user = JSON.parse(userData).data.user;
+
+                    if (user.email && !user.inactive) {
+                        subscriberExceptions.push({
+                            ned_id: user.ned_id,
+                            email: user.email,
+                            sac: record.sac,
+                            status: user.status,
+                            division: record.division,
+                            building: record.building || 'N/A',
+                        });
+                    }
+
+                }));
+
+                resolve(subscriberExceptions);
+
+            } catch (error) {
+                logger.error(`Could not get UserInfo  records for subscriber exception users | ${error}`);
+                reject(error);
+            }
+        } else {
+            resolve(subscriberExceptions);
+        }
+    });
+};
+
+const mergeSubscriberLists = (list1, list2) => {
+
+    list2.forEach(user => {
+        let seen = false;
+        for (let i = 0; i < list1.length; i++) {
+            if (list1[i].ned_id === user.ned_id) {
+                seen = true;
+                break;
+            }
+        }
+        if (!seen) {
+            list1.push({
+                ned_id: user.ned_id,
+                email: user.email,
+                status: user.status,
+                division: user.division,
+                sac: user.sac,
+                building: user.building
+            });
+        }
+
     });
 };
 
@@ -81,61 +175,5 @@ const compareUsers = (a, b) => {
     }
     return 0;
 };
-
-const getEmail = (obj) => {
-
-    let result = null;
-
-    const proxyEmails = obj.proxyAddresses;
-    if (proxyEmails) {
-        if (Array.isArray(proxyEmails)) {
-            proxyEmails.forEach(email => {
-                const data = email.split(':');
-                if (data[0] === 'SMTP') {
-                    result = data[1];
-                }
-            });
-        } else {
-            const data = proxyEmails.split(':');
-            if (data[0] === 'SMTP') {
-                result = data[1];
-            }
-        }
-    }
-    return result;
-};
-
-const getDivision = (obj) => {
-
-    let result = 'N/A';
-
-    if (obj.NIHORGPATH) {
-        const orgPathArr = obj.NIHORGPATH.split(' ') || [];
-        const len = orgPathArr.length;
-
-        if (len > 0 && len <= 2) {
-            result = orgPathArr[len - 1];
-        } else if (len > 2) {
-            if (orgPathArr[1] === 'OD') {
-                result = orgPathArr[2];
-            } else {
-                result = orgPathArr[1];
-            }
-        }
-    }
-
-    return result;
-
-};
-
-const getBuilding = (obj) => {
-
-    if (obj.BUILDINGNAME) {
-        return 'BG ' + obj.BUILDINGNAME;
-    } else {
-        return 'N/A';
-    }
-};
-
 
 module.exports = { getUsers };

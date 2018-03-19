@@ -5,30 +5,14 @@ const { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareR
 const { getUsers } = require('../connectors/userInfoConnector');
 const mongoConnector = require('../connectors/mongoConnector');
 const request = require('request');
+const rp = require('request-promise');
 const logger = require('winston');
-const fs = require('fs');
 
 global.report = '';
 
 let callbacks = 0;
 
-const test = async () => {
-    console.log('starting test.');
-
-    setTimeout(() => {
-        callback();
-    }, 1000);
-
-    const callback = () => {
-        console.log('callback in test.');
-    };
-
-    console.log('at end of test.');
-};
-
-
 const logToReport = (str) => {
-
     global.report += str + '<br/>';
 };
 
@@ -49,7 +33,7 @@ const removeAllSubscribers = async () => {
             ops.push({
                 deleteOne:
                     {
-                        filter: { uniqueidentifier: user.uniqueidentifier }
+                        filter: { ned_id: user.ned_id }
                     }
             });
         });
@@ -109,9 +93,8 @@ const compareSubscriberLists = (leftList, rightList) => {
     while (left || right) {
         if (left && right && left.email === right.email) {
             // Check for changes in any of the record fields
-            if (left.status !== right.status || left.division !== right.division || left.building !== right.building) {
+            if (left.status !== right.status || left.division !== right.division || left.sac !== right.sac || left.building !== right.building) {
                 toUpdate.push(left); // actual
-                // toRemove.push(left);
             }
             left = leftList.shift();
             right = rightList.shift();
@@ -122,7 +105,6 @@ const compareSubscriberLists = (leftList, rightList) => {
         } else if (left && (!right || left.email < right.email)) {
             // subscriber has to be added
             toAdd.push(left); // actual
-            // toRemove.push(left);
             left = leftList.shift();
         } else {
             console.log(`${JSON.stringify(left)} and ${JSON.stringify(right)}`);
@@ -148,14 +130,13 @@ const reloadAllSubscribers = async () => {
         logToReport('2. Load all subscribers in local database');
         logger.info('Starting load of all subscribers in local DB');
         logger.info('Requesting local DB connection');
-
         const connection = await mongoConnector.getConnection();
-
         logger.info(`Connecting to ${config.db.users_collection} collection`);
         const collection = connection.collection(config.db.users_collection);
 
         logger.info('Getting all subscribers from source');
         const usersFromCurrentVds = await getUsers('nci');
+
         let ops = [];
         usersFromCurrentVds.forEach(user => {
             if (validEntry(user)) {
@@ -178,25 +159,27 @@ const reloadAllSubscribers = async () => {
         logger.info('Releasing local DB connection');
         await mongoConnector.releaseConnection();
 
+
         logToReport('3. Load all subscribers into remote database');
         logger.info('Loading all subscribers into remote DB');
         for (const user of usersFromCurrentVds) {
             if (validEntry(user)) {
                 logger.info(`adding ${user.email}`);
                 try {
-                    // Use throttle to send up to 100 requests in parallel.
-                    await throttle(100);
+                    // Use throttle to send up to n requests in parallel.
+                    await throttle(25);
+
                     const subCreateRequest = prepareSubscriberCreateRequest(user.email);
-                    request.post(subCreateRequest, ((error, response, body) => {
+
+                    request.post(subCreateRequest, (error, response, body) => {
                         if (!error && response.statusCode === 200) {
                             request.put(prepareResponseSubmissionRequest(user), callback);
                         } else {
-                            logger.error(`Failed to add ${user.email} in GovDelivery. error  ${error}, code: ${response ? response.statusCode : 'N/A'}, body: ${body || ''}`);
-                            logToReport(`Failed to add ${user.email} in GovDelivery. error  ${error}, code: ${response ? response.statusCode : 'N/A'}, body: ${body || ''}`);
+                            logger.error(`Failed to add ${user.email} in GovDelivery | ${error} | body: ${body} | response: ${response}`);
+                            logToReport(`Failed to add ${user.email} in GovDelivery | ${error} | body: ${body} | response: ${response}`);
                             releaseCallback();
                         }
-                    })
-                    );
+                    });
                 } catch (error) {
                     logger.error(`Failed at update of ${user.email}`);
                     logToReport(`Failed at update of ${user.email}`);
@@ -220,11 +203,13 @@ const updateSubscribers = async () => {
 
     logger.info('Retrieving users from UserInfo');
     const usersFromCurrentVds = await getUsers('nci');
+
     logger.info('Retrieving user set from previous update');
     const usersFromPreviousUpdate = await collection.find().sort({ email: 1 }).toArray() || [];
 
     logger.info('Comparing subscriber lists');
     const [toAdd, toUpdate, toRemove] = compareSubscriberLists(usersFromCurrentVds, usersFromPreviousUpdate);
+
 
     logToReport(toAdd.length + ' users to add.');
     logToReport(toUpdate.length + ' users to update.');
@@ -233,7 +218,7 @@ const updateSubscribers = async () => {
     logger.info(toAdd.length + ' to add');
     logger.info(toUpdate.length + ' to update');
     logger.info(toRemove.length + ' to remove');
-    /*
+
     if (toRemove.length > 0) {
         logger.info('Start removal of subscribers');
         logToReport('<p><strong>Removing the following subscribers:</strong></p>');
@@ -244,9 +229,10 @@ const updateSubscribers = async () => {
             await lock();
             await collection.deleteOne(
                 {
-                    uniqueidentifier: user.uniqueidentifier
+                    ned_id: user.ned_id
                 });
             logToReport(user.email);
+
             request.delete(prepareSubscriberRemoveRequest(user.email), callback);
         } catch (error) {
             logger.error(`Failed at removal of ${user.email}`);
@@ -266,7 +252,7 @@ const updateSubscribers = async () => {
             try {
                 await lock();
                 await collection.replaceOne(
-                    { uniqueidentifier: user.uniqueidentifier },
+                    { ned_id: user.ned_id },
                     user,
                     { upsert: true }
                 );
@@ -288,22 +274,21 @@ const updateSubscribers = async () => {
     }
     for (const user of toAdd) {
         if (validEntry(user)) {
-            logger.info(`${user.email}, `);
+            logger.info(`adding ${user.email}, `);
             try {
                 await lock();
                 await collection.insertOne(user);
                 const subCreateRequest = prepareSubscriberCreateRequest(user.email);
-                request.post(subCreateRequest, ((error, response, body) => {
+                request.post(subCreateRequest, (error, response, body) => {
                     if (!error && response.statusCode === 200) {
                         logToReport(user.email);
                         request.put(prepareResponseSubmissionRequest(user), callback);
                     } else {
-                        logger.error(`Failed to add ${user.email} in GovDelivery. error  ${error}, code: ${response ? response.statusCode : 'N/A'}, body: ${body || ''}`);
-                        logToReport(`Failed to add ${user.email} in GovDelivery. error  ${error}, code: ${response ? response.statusCode : 'N/A'}, body: ${body || ''}`);
+                        logger.error(`Failed to add ${user.email} in GovDelivery. | ${error}`);
+                        logToReport(`Failed to add ${user.email} in GovDelivery. | ${error}`);
                         releaseCallback();
                     }
-                })
-                );
+                });
             } catch (error) {
                 logger.error(`Failed at update of ${user.email}`);
                 logToReport(`Failed at update of ${user.email}`);
@@ -311,12 +296,12 @@ const updateSubscribers = async () => {
                 process.exit(1);
             }
         }
-    }*/
+    }
     await mongoConnector.releaseConnection();
 };
 
 const getAnswers = (user) => {
-    return `Status: ${user.status}, Division: ${user.division}, Building: ${user.building}`;
+    return `Status: ${user.status}, Division: ${user.division}, SAC: ${user.sac}, Building: ${user.building}`;
 };
 
 /**
@@ -331,7 +316,7 @@ const throttle = (maxCallbacks) => {
                 resolve();
             } else {
                 console.log('waiting for throttled resources');
-                setTimeout(wait, maxCallbacks);
+                setTimeout(wait, 100);
             }
         })();
     });
@@ -357,6 +342,7 @@ const lock = () => {
 
 const releaseCallback = () => {
     callbacks--;
+    console.log(`callback released! ...${callbacks} callbacks outstanding.`);
 };
 
 /**
@@ -378,31 +364,35 @@ const waitForCallbacks = () => {
 
 const validEntry = (user) => {
     if (!config.govdel.status_answers[user.status]) {
-        logger.error(`config.govdel.status_answers[${user.status}] has a problem for ${user.email}`);
+        logger.error(`config.govdel.status_answers[${user.status}]has a problem for ${user.email}`);
         process.exit(2);
     }
     if (!config.govdel.division_answers[user.division]) {
-        logger.error(`config.govdel.division_answers[${user.division}] has a problem for ${user.email}`);
+        logger.error(`config.govdel.division_answers[${user.division}]has a problem for ${user.email}`);
         process.exit(2);
     }
     if (!config.govdel.building_answers[user.building]) {
-        logger.error(`config.govdel.building_answers[${user.building}] has a problem for ${user.email}`);
+        logger.error(`config.govdel.building_answers[${user.building}]has a problem for ${user.email}`);
+        process.exit(2);
+    }
+    if (!config.govdel.sac_answers[user.sac]) {
+        logger.error(`config.govdel.sac_answers[${user.sac}]has a problem for ${user.email}`);
         process.exit(2);
     }
 
     return config.govdel.status_answers[user.status] &&
         config.govdel.division_answers[user.division] &&
-        config.govdel.building_answers[user.building];
+        config.govdel.building_answers[user.building] &&
+        config.govdel.sac_answers[user.sac];
 };
 
 const callback = (error, response, body) => {
 
     releaseCallback();
-    console.log(`callback! ... ${callbacks} callbacks outstanding.`);
     if (error || response.statusCode !== 200) {
-        logger.error(`error  ${error}, code: ${response ? response.statusCode : 'N/A'}, body: ${body || ''}`);
-        logToReport(`error  ${error}, code: ${response ? response.statusCode : 'N/A'}, body: ${body || ''}`);
+        logger.error(`${error} | body: ${body} | response: ${response}`);
+        logToReport(`${error} | body: ${body} | response: ${response}`);
     }
 };
 
-module.exports = { reloadAllSubscribers, updateSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly, test };
+module.exports = { reloadAllSubscribers, updateSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly };
