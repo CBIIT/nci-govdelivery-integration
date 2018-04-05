@@ -125,35 +125,6 @@ const composeResponses = (user) => `
 </responses>
 `;
 
-
-// const validateResponses = users => {
-//     let response = true;
-
-//     users.forEach (user => {
-//         if (!config.govdel.status_answers[user.status]) {
-//             logger.error(`User ${user.ned_id} | Status ${user.status} is not mapped!`);
-//             response = false;
-//         }
-
-//         if (!config.govdel.division_answers[user.division]) {
-//             logger.error(`User ${user.ned_id} | Division ${user.division} is not mapped!`);
-//             response = false;
-//         }
-
-//         if (!config.govdel.sac_answers[user.sac]) {
-//             logger.error(`User ${user.ned_id} | SAC ${user.sac} is not mapped!`);
-//             response = false;
-//         }
-
-//         if (!config.govdel.building_answers[user.building]) {
-//             logger.error(`User ${user.ned_id} | Building ${user.building} is not mapped!`);
-//             response = false;
-//         }
-
-//     });
-//     return response;
-// };
-
 const prepareSubscriberRemoveRequest = (email) => ({
     url: getSubscriberModificationUrl(email),
     auth: getAuthenticationObject(),

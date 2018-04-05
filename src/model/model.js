@@ -40,7 +40,7 @@ const removeAllSubscribers = async () => {
 
         logger.info('Delete all subscribers from local DB');
         if (ops.length > 0) {
-            await collection.bulkWrite(ops);
+            // await collection.bulkWrite(ops);
         }
         logger.info('Releasing local DB connection');
         await mongoConnector.releaseConnection();
