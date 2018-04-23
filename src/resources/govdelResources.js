@@ -26,6 +26,10 @@ const getSubscriberResource = () => {
     return config.govdel.subscriberResource;
 };
 
+const getTopicsResource = () => {
+    return config.govdel.topicsResource;
+};
+
 const getResponseResource = () => {
     return config.govdel.responseResource;
 };
@@ -68,6 +72,22 @@ const getSubscriberCreationUrl = () => {
     const resource = getSubscriberResource();
     return baseUrl + accountCode + resource + '.xml';
 };
+
+/**
+ * 
+ * @param {string} email
+ * @return Returns the URL of an API which can be used to GET  a subscriber's topics
+ * 
+ */
+const getSubscriberTopicsUrl = (email) => {
+    const baseUrl = getBaseUrl();
+    const accountCode = getAccountCode();
+    const resource = getSubscriberResource();
+    const encodedSubscriberId = encodeSubscriberId(email);
+    return `${baseUrl}${accountCode}${resource}${encodedSubscriberId}/topics.xml`;
+
+};
+
 
 /**
  * 
@@ -161,4 +181,16 @@ const prepareResponseSubmissionRequest = (user) => {
 
 };
 
-module.exports = { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareResponseSubmissionRequest};
+const prepareSubscriberReadRequest = (email) => ({
+    url: getSubscriberModificationUrl(email),
+    auth: getAuthenticationObject(),
+    timeout: 60000
+});
+
+const prepareSubscriberTopicsReadRequest = (email) => ({
+    url: getSubscriberTopicsUrl(email),
+    auth: getAuthenticationObject(),
+    timeout: 6000
+});
+
+module.exports = { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareSubscriberReadRequest, prepareResponseSubmissionRequest, prepareSubscriberTopicsReadRequest};

@@ -1,6 +1,6 @@
 const program = require('commander');
 // const { config } = require('./constants');
-const { reloadAllSubscribers, updateSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly } = require('./src/model/model');
+const { reloadAllSubscribers, updateSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly, test } = require('./src/model/model');
 const mailer = require('./src/config/mailer');
 const logger = require('./src/config/log');
 
@@ -10,7 +10,7 @@ process.on('beforeExit', async code => {
         process.exit();
     }
     // send the update report
-    mailer.sendReport();
+    // mailer.sendReport();
     end = true;
     logger.info('Process exit ' + code);
 });
@@ -34,5 +34,9 @@ program
     .command('reloadLocalSubscriberBaseOnly')
     .description('Reload Local User Base (No GovDel upload)')
     .action(reloadLocalSubscriberBaseOnly);
+program
+    .command('test')
+    .description('Test the GovDelivery api')
+    .action(test);    
     
 program.parse(process.argv);

@@ -1,12 +1,13 @@
 'use strict';
 const { config } = require('../../constants');
 const mailer = require('../config/mailer');
-const { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareResponseSubmissionRequest } = require('../resources/govdelResources');
+const { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareSubscriberReadRequest, prepareResponseSubmissionRequest, prepareSubscriberTopicsReadRequest } = require('../resources/govdelResources');
 const { getUsers } = require('../connectors/userInfoConnector');
 const mongoConnector = require('../connectors/mongoConnector');
 const request = require('request');
 const rp = require('request-promise');
 const logger = require('winston');
+const parser = require('xml2json');
 
 global.report = '';
 
@@ -14,6 +15,140 @@ let callbacks = 0;
 
 const logToReport = (str) => {
     global.report += str + '<br/>';
+};
+
+const test = async () => {
+
+    const email = 'svetoslav.yankov@gmail.gov';
+
+    // Use throttle to send up to 100 requests in parallel.
+    // await throttle(100);
+    try {
+
+        logger.info(`Getting user details for ${email}`);
+        const subscriber = await getSubscriberIfExists(email);
+        if (subscriber) {
+            logger.info('Subscriber exists');
+            // console.log(subscriber);
+            logger.info('Get the subscriber\'s topics');
+            const topicsResult = await rp.get(prepareSubscriberTopicsReadRequest(email));
+            const topics = parseTopics(topicsResult);
+
+            const [subscribedToAllStaffTopic, subscriberToOtherTopics] = checkTopicSubscriptions(topics);
+
+            console.log(`NCI all staff: ${subscribedToAllStaffTopic}`);
+            console.log(`Other topics:  ${subscriberToOtherTopics}`);
+
+
+        } else {
+            logger.info('Subscriber doesn\'t exist');
+            logger.info(`Creating subscriber ${email}`);
+            const subscriber = await rp.post(prepareSubscriberCreateRequest(email));
+            console.log(subscriber);
+        }
+
+    } catch (error) {
+        logger.error(error);
+    }
+};
+
+const parseTopics = (topicsXmlResult) => {
+    let topics = JSON.parse(parser.toJson(topicsXmlResult)).topics.topic;
+
+    if (!(topics instanceof Array)) {
+        topics = [topics];
+    }
+
+    return topics;
+};
+
+const checkTopicSubscriptions = (topics) => {
+    let subscribedToAllStaffTopic = false;
+    let subscribedToOtherTopics = false;
+    topics.forEach(topic => {
+        if (topic['to-param'] === config.govdel.nciAllTopicCode) {
+            subscribedToAllStaffTopic = true;
+        } else {
+            subscribedToOtherTopics = true;
+        }
+    });
+
+    return [subscribedToAllStaffTopic, subscribedToOtherTopics];
+};
+
+const getSubscriberIfExists = async (email) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const subscriber = await rp.get(prepareSubscriberReadRequest(email));
+            resolve(subscriber);
+        } catch (error) {
+            // Subscriber not found returns 404 and error GD-15002
+            if (error.statusCode === 404 && error.message.includes('GD-15002')) {
+                resolve(false);
+            } else {
+                reject(error);
+            }
+        }
+    });
+};
+
+const removeAllSubscribersNew = async () => {
+
+    return new Promise(async (resolve, reject) => {
+        const ops = [];
+
+        logger.info('Requesting local DB connection');
+        const connection = await mongoConnector.getConnection();
+        logger.info(`Connecting to ${config.db.users_collection} collection`);
+        const collection = connection.collection(config.db.users_collection);
+
+        logger.info('Get all subscribers');
+        const allUsers = await collection.find().toArray() || [];
+
+        allUsers.forEach(user => {
+            ops.push({
+                deleteOne:
+                    {
+                        filter: { ned_id: user.ned_id }
+                    }
+            });
+        });
+
+        logger.info('Starting to delete remote subscribers');
+        for (let user of allUsers) {
+            // Use throttle to send up to 100 requests in parallel.
+            // await throttle(100);
+            logger.info(`making request to delete ${user.email}`);
+            try {
+
+                // WORK HERE
+                // Get the user from GovDelivery 
+                // const subscriber = await rp.get(prepare)
+                // Get subscriptions of user. Delete only if user has only NCI All Staff subscription
+
+                request.delete(prepareSubscriberRemoveRequest(user.email), callback);
+                // Otherwise only remove user from NCI All Staff topic
+
+                // delete from local database
+                await collection.deleteOne(
+                    {
+                        ned_id: user.ned_id
+                    });
+
+
+            } catch (error) {
+                logToReport(error);
+                logger.error(error);
+                reject(error);
+            }
+        }
+        // make sure all remote requests are completed before resolving
+        await waitForCallbacks();
+        logger.info('Subscriber removal completed');
+        resolve();
+
+    });
+
 };
 
 const removeAllSubscribers = async () => {
@@ -51,7 +186,14 @@ const removeAllSubscribers = async () => {
             await throttle(100);
             logger.info(`making request to delete ${user.email}`);
             try {
+
+                // WORK HERE
+
+                // Get subscriptions of user. Delete only if user has only NCI All Staff subscription
                 request.delete(prepareSubscriberRemoveRequest(user.email), callback);
+                // Otherwise only remove user from NCI All Staff topic
+
+
             } catch (error) {
                 logToReport(error);
                 logger.error(error);
@@ -169,6 +311,10 @@ const reloadAllSubscribers = async () => {
                     // Use throttle to send up to n requests in parallel.
                     await throttle(25);
 
+                    // Check if subscriber exists remotely
+                    // If subscriber exists, add them to the NCI All Staff topic
+                    // Otherwise create subscriber record and add them to NCI All Staff topic
+
                     const subCreateRequest = prepareSubscriberCreateRequest(user.email);
 
                     request.post(subCreateRequest, (error, response, body) => {
@@ -233,6 +379,9 @@ const updateSubscribers = async () => {
                 });
             logToReport(user.email);
 
+            // Check if subscriber is member of only NCI All staff
+            // If ember of multiple topics, only remove from NCI All staff topic
+            // Else remove subscriber completely
             request.delete(prepareSubscriberRemoveRequest(user.email), callback);
         } catch (error) {
             logger.error(`Failed at removal of ${user.email}`);
@@ -257,6 +406,7 @@ const updateSubscribers = async () => {
                     { upsert: true }
                 );
                 logToReport(user.email);
+                // Respond to subscriber NCI all staff questions
                 request.put(prepareResponseSubmissionRequest(user), callback);
 
             } catch (error) {
@@ -278,6 +428,8 @@ const updateSubscribers = async () => {
             try {
                 await lock();
                 await collection.insertOne(user);
+                // Check if subscriber exists remotely. In that case, add them to NCI All staff and answer questions. 
+                // If it does exist, only add them to NCI All Staff topic and answer questions
                 const subCreateRequest = prepareSubscriberCreateRequest(user.email);
                 request.post(subCreateRequest, (error, response, body) => {
                     if (!error && response.statusCode === 200) {
@@ -395,4 +547,4 @@ const callback = (error, response, body) => {
     }
 };
 
-module.exports = { reloadAllSubscribers, updateSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly };
+module.exports = { reloadAllSubscribers, updateSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly, test };
