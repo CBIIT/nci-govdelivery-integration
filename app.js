@@ -1,6 +1,6 @@
 const program = require('commander');
 // const { config } = require('./constants');
-const { reloadAllSubscribers, updateSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly, test } = require('./src/model/model');
+const { reloadAllSubscribers, updateSubscribers, removeAllSubscribers, removeAllSubscribersNew, reloadLocalSubscriberBaseOnly, test } = require('./src/model/model');
 const mailer = require('./src/config/mailer');
 const logger = require('./src/config/log');
 
@@ -18,10 +18,6 @@ process.on('beforeExit', async code => {
 program
     .version('1.0.0')
     .description('GovDelivery Subscriber Update');
-program
-    .command('reloadAllSubscribers')
-    .description('Deletes and reloads all subscribers')
-    .action(reloadAllSubscribers);
 program
     .command('updateSubscribers')
     .description('Updates subscribers')

@@ -1,17 +1,14 @@
 'use strict';
 const { config } = require('../../constants');
 const mailer = require('../config/mailer');
-const { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareSubscriberReadRequest, prepareResponseSubmissionRequest, prepareSubscriberTopicsReadRequest } = require('../resources/govdelResources');
+const { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareSubscriberReadRequest, prepareResponseSubmissionRequest, prepareSubscriberTopicsReadRequest, prepareTopicSubmissionRequest } = require('../resources/govdelResources');
 const { getUsers } = require('../connectors/userInfoConnector');
 const mongoConnector = require('../connectors/mongoConnector');
-const request = require('request');
 const rp = require('request-promise');
 const logger = require('winston');
-const parser = require('xml2json');
+const { util } = require('./util');
 
 global.report = '';
-
-let callbacks = 0;
 
 const logToReport = (str) => {
     global.report += str + '<br/>';
@@ -21,20 +18,17 @@ const test = async () => {
 
     const email = 'svetoslav.yankov@gmail.gov';
 
-    // Use throttle to send up to 100 requests in parallel.
-    // await throttle(100);
     try {
 
         logger.info(`Getting user details for ${email}`);
         const subscriber = await getSubscriberIfExists(email);
         if (subscriber) {
             logger.info('Subscriber exists');
-            // console.log(subscriber);
             logger.info('Get the subscriber\'s topics');
             const topicsResult = await rp.get(prepareSubscriberTopicsReadRequest(email));
-            const topics = parseTopics(topicsResult);
+            const topics = util.parseTopics(topicsResult);
 
-            const [subscribedToAllStaffTopic, subscriberToOtherTopics] = checkTopicSubscriptions(topics);
+            const [subscribedToAllStaffTopic, subscriberToOtherTopics] = util.checkTopicSubscriptions(topics);
 
             console.log(`NCI all staff: ${subscribedToAllStaffTopic}`);
             console.log(`Other topics:  ${subscriberToOtherTopics}`);
@@ -52,30 +46,10 @@ const test = async () => {
     }
 };
 
-const parseTopics = (topicsXmlResult) => {
-    let topics = JSON.parse(parser.toJson(topicsXmlResult)).topics.topic;
-
-    if (!(topics instanceof Array)) {
-        topics = [topics];
-    }
-
-    return topics;
-};
-
-const checkTopicSubscriptions = (topics) => {
-    let subscribedToAllStaffTopic = false;
-    let subscribedToOtherTopics = false;
-    topics.forEach(topic => {
-        if (topic['to-param'] === config.govdel.nciAllTopicCode) {
-            subscribedToAllStaffTopic = true;
-        } else {
-            subscribedToOtherTopics = true;
-        }
-    });
-
-    return [subscribedToAllStaffTopic, subscribedToOtherTopics];
-};
-
+/**
+ * Gets a subscriber record from GovDelivery. If such subscriber is nto found it returns false.
+ * @param {string} email 
+ */
 const getSubscriberIfExists = async (email) => {
     return new Promise(async (resolve, reject) => {
         try {
@@ -92,42 +66,107 @@ const getSubscriberIfExists = async (email) => {
     });
 };
 
-const removeAllSubscribersNew = async () => {
+/**
+ * Removes a subscriber from GovDelivery:
+ * 1. If the subscriber is not found the request is ignored silently.
+ * 2. If the subscriber is subscribed to more topics than All Staff, it is not removed, but only the NCI All staff subscription is removed.
+ * 3. If the subscriber is subscribed only to All Staff it is removed completely.
+ * @param {string} email 
+ */
+const removeGovDeliverySubscriber = async (email) => {
+    return new Promise(async (resolve, reject) => {
+
+        try {
+            const subscriber = await getSubscriberIfExists(email);
+            if (subscriber) {
+                logger.info(`${email} exists. Getting topics...`);
+                const topicsResult = await rp.get(prepareSubscriberTopicsReadRequest(email));
+                const topics = util.parseTopics(topicsResult);
+
+                const [subscribedToAllStaffTopic, subscribedToOtherTopics] = util.checkTopicSubscriptions(topics);
+
+                if (!subscribedToAllStaffTopic) {
+                    logger.info(`${email} is not subscribed to NCI All Staff, ignore.`);
+                    resolve();
+                }
+
+                if (subscribedToOtherTopics) {
+                    logger.info(`${email} is subscribed to other topics, only removing All Staff subscription.`);
+
+                    await rp.put(prepareTopicSubmissionRequest(email, topics.filter(topic => topic !== config.govdel.nciAllTopicCode)));
+                    resolve();
+                    // Remove from NCIAllStaff topic
+                } else {
+                    logger.info(`${email} is only subscribed to NCI All Staff, removing subscriber completely.`);
+                    await rp.delete(prepareSubscriberRemoveRequest(email));
+                    resolve();
+                }
+            } else {
+                logger.info(`${email} not found in GovDelivery, ignore.`);
+                resolve();
+            }
+
+        } catch (error) {
+            logger.error(`Failed to remove ${email} from GovDelivery. | ${error}`);
+            logToReport(`Failed to add ${email} from GovDelivery. | ${error}`);
+            reject(new Error(error));
+        }
+    });
+};
+
+const addGovDeliverySubscriber = async (user) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const subscriber = await getSubscriberIfExists(user.email);
+            if (subscriber) {
+                logger.info(`${user.email} exists. Getting topics...`);
+                const topicsResult = await rp.get(prepareSubscriberTopicsReadRequest(user.email));
+                const topics = util.parseTopics(topicsResult);
+
+                const [subscribedToAllStaffTopic, subscribedToOtherTopics] = util.checkTopicSubscriptions(topics);
+                if (!subscribedToAllStaffTopic) {
+                    logger.info(`${user.email} is not subscribed to All Staff, subscribing now...`);
+                    topics.add(config.govdel.nciAllTopicCode);
+                    await rp.put(prepareTopicSubmissionRequest(user.email, topics));
+                } else {
+                    logger.info(`${user.email} is already subscribed to All Staff, skipping...`);
+                }
+                resolve();
+            } else {
+                // add a new subscriber record.
+                await rp.post(prepareSubscriberCreateRequest(user.email));
+                logToReport(user.email);
+                await rp.put(prepareResponseSubmissionRequest(user));
+                resolve();
+            }
+        } catch (error) {
+            logger.error(`Failed to add ${user.email} in GovDelivery. | ${error}`);
+            logToReport(`Failed to add ${user.email} in GovDelivery. | ${error}`);
+            reject(new Error(error));
+        }
+    });
+};
+
+/**
+ * Removes all subscribers one-by-one from the local and remote data store.
+ */
+const removeAllSubscribers = async () => {
 
     return new Promise(async (resolve, reject) => {
-        const ops = [];
 
-        logger.info('Requesting local DB connection');
+        logger.info('Starting process to remove all local and remote subscribers.');
         const connection = await mongoConnector.getConnection();
         logger.info(`Connecting to ${config.db.users_collection} collection`);
         const collection = connection.collection(config.db.users_collection);
 
-        logger.info('Get all subscribers');
+        logger.info('Get all local subscribers');
         const allUsers = await collection.find().toArray() || [];
 
-        allUsers.forEach(user => {
-            ops.push({
-                deleteOne:
-                    {
-                        filter: { ned_id: user.ned_id }
-                    }
-            });
-        });
-
-        logger.info('Starting to delete remote subscribers');
         for (let user of allUsers) {
-            // Use throttle to send up to 100 requests in parallel.
-            // await throttle(100);
-            logger.info(`making request to delete ${user.email}`);
             try {
 
-                // WORK HERE
-                // Get the user from GovDelivery 
-                // const subscriber = await rp.get(prepare)
-                // Get subscriptions of user. Delete only if user has only NCI All Staff subscription
-
-                request.delete(prepareSubscriberRemoveRequest(user.email), callback);
-                // Otherwise only remove user from NCI All Staff topic
+                logger.info(`Removing ${user.email}`);
+                await removeGovDeliverySubscriber(user.email);
 
                 // delete from local database
                 await collection.deleteOne(
@@ -137,77 +176,25 @@ const removeAllSubscribersNew = async () => {
 
 
             } catch (error) {
-                logToReport(error);
-                logger.error(error);
+                logger.error(`Failed to remove ${user.email} from GovDelivery. | ${error}`);
+                logToReport(`Failed to add ${user.email} from GovDelivery. | ${error}`);
                 reject(error);
             }
         }
-        // make sure all remote requests are completed before resolving
-        await waitForCallbacks();
-        logger.info('Subscriber removal completed');
-        resolve();
 
-    });
-
-};
-
-const removeAllSubscribers = async () => {
-
-    return new Promise(async (resolve, reject) => {
-        const ops = [];
-
-        logger.info('Requesting local DB connection');
-        const connection = await mongoConnector.getConnection();
-        logger.info(`Connecting to ${config.db.users_collection} collection`);
-        const collection = connection.collection(config.db.users_collection);
-
-        logger.info('Get all subscribers');
-        const allUsers = await collection.find().toArray() || [];
-
-        allUsers.forEach(user => {
-            ops.push({
-                deleteOne:
-                    {
-                        filter: { ned_id: user.ned_id }
-                    }
-            });
-        });
-
-        logger.info('Delete all subscribers from local DB');
-        if (ops.length > 0) {
-            // await collection.bulkWrite(ops);
-        }
         logger.info('Releasing local DB connection');
         await mongoConnector.releaseConnection();
 
-        logger.info('Starting to delete remote subscribers');
-        for (let user of allUsers) {
-            // Use throttle to send up to 100 requests in parallel.
-            await throttle(100);
-            logger.info(`making request to delete ${user.email}`);
-            try {
-
-                // WORK HERE
-
-                // Get subscriptions of user. Delete only if user has only NCI All Staff subscription
-                request.delete(prepareSubscriberRemoveRequest(user.email), callback);
-                // Otherwise only remove user from NCI All Staff topic
-
-
-            } catch (error) {
-                logToReport(error);
-                logger.error(error);
-                reject(error);
-            }
-        }
-        // make sure all remote requests are completed before resolving
-        await waitForCallbacks();
         logger.info('Subscriber removal completed');
         resolve();
+
     });
 
 };
 
+/**
+ * Reloads the local subscriber base.
+ */
 const reloadLocalSubscriberBaseOnly = async () => {
     const connection = await mongoConnector.getConnection();
     logger.info(`Connecting to ${config.db.users_collection} collection`);
@@ -223,123 +210,10 @@ const reloadLocalSubscriberBaseOnly = async () => {
     }
 };
 
-const compareSubscriberLists = (leftList, rightList) => {
-
-    const toAdd = [];
-    const toUpdate = [];
-    const toRemove = [];
-
-    let left = leftList.shift();
-    let right = rightList.shift();
-    let counter = 0;
-    while (left || right) {
-        if (left && right && left.email === right.email) {
-            // Check for changes in any of the record fields
-            if (left.status !== right.status || left.division !== right.division || left.sac !== right.sac || left.building !== right.building) {
-                toUpdate.push(left); // actual
-            }
-            left = leftList.shift();
-            right = rightList.shift();
-        } else if (right && (!left || left.email > right.email)) {
-            // subscriber has to be removed
-            toRemove.push(right);
-            right = rightList.shift();
-        } else if (left && (!right || left.email < right.email)) {
-            // subscriber has to be added
-            toAdd.push(left); // actual
-            left = leftList.shift();
-        } else {
-            console.log(`${JSON.stringify(left)} and ${JSON.stringify(right)}`);
-        }
-    }
-
-    return [toAdd, toUpdate, toRemove];
-};
-
-const reloadAllSubscribers = async () => {
-
-    logToReport('Reloading all subscribers');
-    try {
-        logToReport('1. Remove all subscribers ');
-        logger.info('Removing all subscribers');
-        try {
-            await removeAllSubscribers();
-        } catch (error) {
-            logger.error(`Failed to remove all subscribers: ${error}`);
-        }
-
-
-        logToReport('2. Load all subscribers in local database');
-        logger.info('Starting load of all subscribers in local DB');
-        logger.info('Requesting local DB connection');
-        const connection = await mongoConnector.getConnection();
-        logger.info(`Connecting to ${config.db.users_collection} collection`);
-        const collection = connection.collection(config.db.users_collection);
-
-        logger.info('Getting all subscribers from source');
-        const usersFromCurrentVds = await getUsers('nci');
-
-        let ops = [];
-        usersFromCurrentVds.forEach(user => {
-            if (validEntry(user)) {
-                ops.push({
-                    insertOne:
-                        {
-                            document: user
-                        }
-                });
-            } else {
-                logger.error(`user ${user.email} has invalid entries among ${getAnswers(user)}`);
-                logToReport(`user ${user.email} has invalid entries among ${getAnswers(user)}`);
-            }
-        });
-
-        logger.info('Storing all subscribers to local DB');
-        if (ops.length > 0) {
-            await collection.bulkWrite(ops);
-        }
-        logger.info('Releasing local DB connection');
-        await mongoConnector.releaseConnection();
-
-
-        logToReport('3. Load all subscribers into remote database');
-        logger.info('Loading all subscribers into remote DB');
-        for (const user of usersFromCurrentVds) {
-            if (validEntry(user)) {
-                logger.info(`adding ${user.email}`);
-                try {
-                    // Use throttle to send up to n requests in parallel.
-                    await throttle(25);
-
-                    // Check if subscriber exists remotely
-                    // If subscriber exists, add them to the NCI All Staff topic
-                    // Otherwise create subscriber record and add them to NCI All Staff topic
-
-                    const subCreateRequest = prepareSubscriberCreateRequest(user.email);
-
-                    request.post(subCreateRequest, (error, response, body) => {
-                        if (!error && response.statusCode === 200) {
-                            request.put(prepareResponseSubmissionRequest(user), callback);
-                        } else {
-                            logger.error(`Failed to add ${user.email} in GovDelivery | ${error} | body: ${body} | response: ${response}`);
-                            logToReport(`Failed to add ${user.email} in GovDelivery | ${error} | body: ${body} | response: ${response}`);
-                            releaseCallback();
-                        }
-                    });
-                } catch (error) {
-                    logger.error(`Failed at update of ${user.email}`);
-                    logToReport(`Failed at update of ${user.email}`);
-                    await mailer.sendReport();
-                    process.exit(1);
-                }
-            }
-        }
-
-    } catch (error) {
-        logger.error(error);
-    }
-};
-
+/**
+ * 
+ * Updates the local and remote subscriber base.
+ */
 const updateSubscribers = async () => {
     logToReport('Starting subscriber update on ' + Date().toLocaleString());
 
@@ -354,8 +228,7 @@ const updateSubscribers = async () => {
     const usersFromPreviousUpdate = await collection.find().sort({ email: 1 }).toArray() || [];
 
     logger.info('Comparing subscriber lists');
-    const [toAdd, toUpdate, toRemove] = compareSubscriberLists(usersFromCurrentVds, usersFromPreviousUpdate);
-
+    const [toAdd, toUpdate, toRemove] = util.compareSubscriberLists(usersFromCurrentVds, usersFromPreviousUpdate);
 
     logToReport(toAdd.length + ' users to add.');
     logToReport(toUpdate.length + ' users to update.');
@@ -365,6 +238,7 @@ const updateSubscribers = async () => {
     logger.info(toUpdate.length + ' to update');
     logger.info(toRemove.length + ' to remove');
 
+    // Removals
     if (toRemove.length > 0) {
         logger.info('Start removal of subscribers');
         logToReport('<p><strong>Removing the following subscribers:</strong></p>');
@@ -372,25 +246,24 @@ const updateSubscribers = async () => {
     for (const user of toRemove) {
         logger.info(`removing ${user.email}`);
         try {
-            await lock();
+
+            await removeGovDeliverySubscriber(user.email);
+
             await collection.deleteOne(
                 {
                     ned_id: user.ned_id
                 });
             logToReport(user.email);
 
-            // Check if subscriber is member of only NCI All staff
-            // If ember of multiple topics, only remove from NCI All staff topic
-            // Else remove subscriber completely
-            request.delete(prepareSubscriberRemoveRequest(user.email), callback);
         } catch (error) {
-            logger.error(`Failed at removal of ${user.email}`);
-            logToReport(`Failed at removal of ${user.email}`);
+            logger.error(`Failed to remove ${user.email}`);
+            logToReport(`Failed to remove of ${user.email}`);
             await mailer.sendReport();
             process.exit(1);
         }
     }
 
+    // Updates
     if (toUpdate.length > 0) {
         logger.info('Start update of subscribers');
         logToReport('<p><strong>Updating the following subscribers:</strong></p>');
@@ -399,25 +272,28 @@ const updateSubscribers = async () => {
         if (validEntry(user)) {
             logger.info(`updating ${user.email}`);
             try {
-                await lock();
+
+                // Respond to subscriber NCI all staff questions
+                await rp.put(prepareResponseSubmissionRequest(user));
+
                 await collection.replaceOne(
                     { ned_id: user.ned_id },
                     user,
                     { upsert: true }
                 );
                 logToReport(user.email);
-                // Respond to subscriber NCI all staff questions
-                request.put(prepareResponseSubmissionRequest(user), callback);
+
 
             } catch (error) {
-                logger.error(`Failed at update of ${user.email}`);
-                logToReport(`Failed at update of ${user.email}`);
+                logger.error(`Failed to update ${user.email}`);
+                logToReport(`Failed to update ${user.email}`);
                 await mailer.sendReport();
                 process.exit(1);
             }
         }
     }
 
+    // Additions
     if (toAdd.length > 0) {
         logger.info('Start addition of subscribers');
         logToReport('<p><strong>Adding the following subscribers:</strong></p>');
@@ -426,91 +302,24 @@ const updateSubscribers = async () => {
         if (validEntry(user)) {
             logger.info(`adding ${user.email}, `);
             try {
-                await lock();
+
+                // Add remotely
+                await addGovDeliverySubscriber(user);
+                await rp.put(prepareResponseSubmissionRequest(user));
+                // Add locally
                 await collection.insertOne(user);
-                // Check if subscriber exists remotely. In that case, add them to NCI All staff and answer questions. 
-                // If it does exist, only add them to NCI All Staff topic and answer questions
-                const subCreateRequest = prepareSubscriberCreateRequest(user.email);
-                request.post(subCreateRequest, (error, response, body) => {
-                    if (!error && response.statusCode === 200) {
-                        logToReport(user.email);
-                        request.put(prepareResponseSubmissionRequest(user), callback);
-                    } else {
-                        logger.error(`Failed to add ${user.email} in GovDelivery. | ${error}`);
-                        logToReport(`Failed to add ${user.email} in GovDelivery. | ${error}`);
-                        releaseCallback();
-                    }
-                });
+                logToReport(user.email);
+
             } catch (error) {
-                logger.error(`Failed at update of ${user.email}`);
-                logToReport(`Failed at update of ${user.email}`);
+                logger.error(`Failed to add ${user.email}`);
+                logToReport(`Failed to add ${user.email}`);
                 await mailer.sendReport();
                 process.exit(1);
             }
         }
     }
     await mongoConnector.releaseConnection();
-};
 
-const getAnswers = (user) => {
-    return `Status: ${user.status}, Division: ${user.division}, SAC: ${user.sac}, Building: ${user.building}`;
-};
-
-/**
- * Waits until outstanding callbacks fall under a specified number and then reserves a callback.
- * This can be used in situations when the number of parallel requests should be limited to avoid overload of the remote.
- */
-const throttle = (maxCallbacks) => {
-    return new Promise(resolve => {
-        (function wait() {
-            if (callbacks < maxCallbacks) {
-                callbacks++;
-                resolve();
-            } else {
-                console.log('waiting for throttled resources');
-                setTimeout(wait, 100);
-            }
-        })();
-    });
-};
-
-/**
- * Waits until all outstanding callbacks have been called and then reserves a callback.
- * This can be used in situations when requests have to be made one at a time.
- */
-const lock = () => {
-    return new Promise(resolve => {
-        (function wait() {
-            if (callbacks === 0) {
-                callbacks++;
-                resolve();
-            } else {
-                // console.log('waiting for lock');
-                setTimeout(wait, 100);
-            }
-        })();
-    });
-};
-
-const releaseCallback = () => {
-    callbacks--;
-    console.log(`callback released! ...${callbacks} callbacks outstanding.`);
-};
-
-/**
- * Waits until all outstanding callbacks have been called.
- */
-const waitForCallbacks = () => {
-    return new Promise(resolve => {
-        (function wait() {
-            if (callbacks === 0) {
-                resolve();
-            } else {
-                console.log('waiting for completion');
-                setTimeout(wait, 100);
-            }
-        })();
-    });
 };
 
 
@@ -538,13 +347,4 @@ const validEntry = (user) => {
         config.govdel.sac_answers[user.sac];
 };
 
-const callback = (error, response, body) => {
-
-    releaseCallback();
-    if (error || response.statusCode !== 200) {
-        logger.error(`${error} | body: ${body} | response: ${response}`);
-        logToReport(`${error} | body: ${body} | response: ${response}`);
-    }
-};
-
-module.exports = { reloadAllSubscribers, updateSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly, test };
+module.exports = { updateSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly, test };

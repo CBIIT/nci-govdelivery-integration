@@ -26,10 +26,6 @@ const getSubscriberResource = () => {
     return config.govdel.subscriberResource;
 };
 
-const getTopicsResource = () => {
-    return config.govdel.topicsResource;
-};
-
 const getResponseResource = () => {
     return config.govdel.responseResource;
 };
@@ -145,6 +141,26 @@ const composeResponses = (user) => `
 </responses>
 `;
 
+const composeTopics = (topics) => {
+    let response = `
+    <subscriber>
+        <send-notifications type='boolean'>false</send-notifications>
+            <topics type='array'>';
+    `;
+    topics.forEach(topic => {
+        response += `
+        <topic>
+            <code>${topic}</code>
+        </topic>`;
+    });
+    response += `
+        </topics>
+    </subscriber>
+    `;
+
+    return response;
+};
+
 const prepareSubscriberRemoveRequest = (email) => ({
     url: getSubscriberModificationUrl(email),
     auth: getAuthenticationObject(),
@@ -181,6 +197,21 @@ const prepareResponseSubmissionRequest = (user) => {
 
 };
 
+const prepareTopicSubmissionRequest = (email, topics) => {
+    const url = getSubscriberTopicsUrl(email);
+    const auth = getAuthenticationObject();
+    const topicXml = composeTopics(topics);
+
+    return {
+        url: url,
+        body: topicXml,
+        headers: { 'Content-Type': 'application/xml' },
+        auth: auth,
+        timeout: 60000
+    };
+
+};
+
 const prepareSubscriberReadRequest = (email) => ({
     url: getSubscriberModificationUrl(email),
     auth: getAuthenticationObject(),
@@ -193,4 +224,4 @@ const prepareSubscriberTopicsReadRequest = (email) => ({
     timeout: 6000
 });
 
-module.exports = { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareSubscriberReadRequest, prepareResponseSubmissionRequest, prepareSubscriberTopicsReadRequest};
+module.exports = { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareSubscriberReadRequest, prepareResponseSubmissionRequest, prepareSubscriberTopicsReadRequest, prepareTopicSubmissionRequest };
