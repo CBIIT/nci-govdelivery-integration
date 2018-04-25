@@ -1,12 +1,11 @@
 'use strict';
 const { config } = require('../../constants');
 const mailer = require('../config/mailer');
-const { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareSubscriberReadRequest, prepareResponseSubmissionRequest, prepareSubscriberTopicsReadRequest, prepareTopicSubmissionRequest } = require('../resources/govdelResources');
 const { getUsers } = require('../connectors/userInfoConnector');
 const mongoConnector = require('../connectors/mongoConnector');
-const rp = require('request-promise');
+const gdConnector = require('../connectors/gdConnector');
 const logger = require('winston');
-const { util } = require('./util');
+const { util } = require('../resources/util');
 
 global.report = '';
 
@@ -14,141 +13,8 @@ const logToReport = (str) => {
     global.report += str + '<br/>';
 };
 
-const test = async () => {
-
-    const email = 'svetoslav.yankov@nih.gov';
-
-    try {
-
-        logger.info(`Getting user details for ${email}`);
-        const subscriber = await getSubscriberIfExists(email);
-        if (subscriber) {
-            logger.info('Subscriber exists');
-            logger.info('Get the subscriber\'s topics');
-            const topicsResult = await rp.get(prepareSubscriberTopicsReadRequest(email));
-            const topics = util.parseTopics(topicsResult);
-
-            const [subscribedToAllStaffTopic, subscriberToOtherTopics] = util.checkTopicSubscriptions(topics);
-
-            console.log(`NCI all staff: ${subscribedToAllStaffTopic}`);
-            console.log(`Other topics:  ${subscriberToOtherTopics}`);
-
-
-        } else {
-            logger.info('Subscriber doesn\'t exist');
-            logger.info(`Creating subscriber ${email}`);
-            const subscriber = await rp.post(prepareSubscriberCreateRequest(email));
-            console.log(subscriber);
-        }
-
-    } catch (error) {
-        logger.error(error);
-    }
-};
-
 /**
- * Gets a subscriber record from GovDelivery. If such subscriber is nto found it returns false.
- * @param {string} email 
- */
-const getSubscriberIfExists = async (email) => {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const subscriber = await rp.get(prepareSubscriberReadRequest(email));
-            resolve(subscriber);
-        } catch (error) {
-            // Subscriber not found returns 404 and error GD-15002
-            if (error.statusCode === 404 && error.message.includes('GD-15002')) {
-                resolve(false);
-            } else {
-                reject(error);
-            }
-        }
-    });
-};
-
-/**
- * Removes a subscriber from GovDelivery:
- * 1. If the subscriber is not found the request is ignored silently.
- * 2. If the subscriber is subscribed to more topics than All Staff, it is not removed, but only the NCI All staff subscription is removed.
- * 3. If the subscriber is subscribed only to All Staff it is removed completely.
- * @param {string} email 
- */
-const removeGovDeliverySubscriber = async (email) => {
-    return new Promise(async (resolve, reject) => {
-
-        try {
-            const subscriber = await getSubscriberIfExists(email);
-            if (subscriber) {
-                logger.info(`${email} exists. Getting topics...`);
-                const topicsResult = await rp.get(prepareSubscriberTopicsReadRequest(email));
-                const topics = util.parseTopics(topicsResult);
-
-                const [subscribedToAllStaffTopic, subscribedToOtherTopics] = util.checkTopicSubscriptions(topics);
-
-                if (!subscribedToAllStaffTopic) {
-                    logger.info(`${email} is not subscribed to NCI All Staff, ignore.`);
-                    resolve();
-                }
-
-                if (subscribedToOtherTopics) {
-                    logger.info(`${email} is subscribed to other topics, only removing All Staff subscription.`);
-
-                    await rp.put(prepareTopicSubmissionRequest(email, topics.filter(topic => topic !== config.govdel.nciAllTopicCode)));
-                    resolve();
-                    // Remove from NCIAllStaff topic
-                } else {
-                    logger.info(`${email} is only subscribed to NCI All Staff, removing subscriber completely.`);
-                    await rp.delete(prepareSubscriberRemoveRequest(email));
-                    resolve();
-                }
-            } else {
-                logger.info(`${email} not found in GovDelivery, ignore.`);
-                resolve();
-            }
-
-        } catch (error) {
-            logger.error(`Failed to remove ${email} from GovDelivery. | ${error}`);
-            logToReport(`Failed to add ${email} from GovDelivery. | ${error}`);
-            reject(new Error(error));
-        }
-    });
-};
-
-const addGovDeliverySubscriber = async (user) => {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const subscriber = await getSubscriberIfExists(user.email);
-            if (subscriber) {
-                logger.info(`${user.email} exists. Getting topics...`);
-                const topicsResult = await rp.get(prepareSubscriberTopicsReadRequest(user.email));
-                const topics = util.parseTopics(topicsResult);
-
-                const [subscribedToAllStaffTopic, subscribedToOtherTopics] = util.checkTopicSubscriptions(topics);
-                if (!subscribedToAllStaffTopic) {
-                    logger.info(`${user.email} is not subscribed to All Staff, subscribing now...`);
-                    topics.push(config.govdel.nciAllTopicCode);
-                    await rp.put(prepareTopicSubmissionRequest(user.email, topics));
-                } else {
-                    logger.info(`${user.email} is already subscribed to All Staff, skipping...`);
-                }
-                resolve();
-            } else {
-                // add a new subscriber record.
-                await rp.post(prepareSubscriberCreateRequest(user.email));
-                logToReport(user.email);
-                await rp.put(prepareResponseSubmissionRequest(user));
-                resolve();
-            }
-        } catch (error) {
-            logger.error(`Failed to add ${user.email} in GovDelivery. | ${error}`);
-            logToReport(`Failed to add ${user.email} in GovDelivery. | ${error}`);
-            reject(new Error(error));
-        }
-    });
-};
-
-/**
- * Removes all subscribers one-by-one from the local and remote data store.
+ * Removes all subscribers one-by-one from the local and remote user base.
  */
 const removeAllSubscribers = async () => {
 
@@ -166,14 +32,13 @@ const removeAllSubscribers = async () => {
             try {
 
                 logger.info(`Removing ${user.email}`);
-                await removeGovDeliverySubscriber(user.email);
+                await gdConnector.removeGovDeliverySubscriber(user.email);
 
                 // delete from local database
                 await collection.deleteOne(
                     {
                         ned_id: user.ned_id
                     });
-
 
             } catch (error) {
                 logger.error(`Failed to remove ${user.email} from GovDelivery. | ${error}`);
@@ -247,7 +112,7 @@ const updateSubscribers = async () => {
         logger.info(`removing ${user.email}`);
         try {
 
-            await removeGovDeliverySubscriber(user.email);
+            await gdConnector.removeGovDeliverySubscriber(user.email);
 
             await collection.deleteOne(
                 {
@@ -274,8 +139,7 @@ const updateSubscribers = async () => {
             try {
 
                 // Respond to subscriber NCI all staff questions
-                await rp.put(prepareResponseSubmissionRequest(user));
-
+                await gdConnector.submitUserReponses(user);
                 await collection.replaceOne(
                     { ned_id: user.ned_id },
                     user,
@@ -300,12 +164,13 @@ const updateSubscribers = async () => {
     }
     for (const user of toAdd) {
         if (validEntry(user)) {
-            logger.info(`adding ${user.email}, `);
+            logger.info(`adding ${user.email} `);
             try {
 
                 // Add remotely
-                await addGovDeliverySubscriber(user);
-                await rp.put(prepareResponseSubmissionRequest(user));
+                await gdConnector.addGovDeliverySubscriber(user);
+                await gdConnector.submitUserResponses(user);
+
                 // Add locally
                 await collection.insertOne(user);
                 logToReport(user.email);
@@ -347,4 +212,4 @@ const validEntry = (user) => {
         config.govdel.sac_answers[user.sac];
 };
 
-module.exports = { updateSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly, test };
+module.exports = { updateSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly };
