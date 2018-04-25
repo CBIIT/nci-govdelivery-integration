@@ -21,7 +21,7 @@ const removeAllSubscribers = async () => {
     return new Promise(async (resolve, reject) => {
 
         logger.info('Starting process to remove all local and remote subscribers.');
-        const connection = await mongoConnector.getConnection();
+        const connection = await mongoConnector.getConnection();        
         logger.info(`Connecting to ${config.db.users_collection} collection`);
         const collection = connection.collection(config.db.users_collection);
 
@@ -42,7 +42,7 @@ const removeAllSubscribers = async () => {
 
             } catch (error) {
                 logger.error(`Failed to remove ${user.email} from GovDelivery. | ${error}`);
-                logToReport(`Failed to add ${user.email} from GovDelivery. | ${error}`);
+                logToReport(`Failed to remove ${user.email} from GovDelivery. | ${error}`);
                 reject(error);
             }
         }
