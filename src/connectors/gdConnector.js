@@ -59,11 +59,9 @@ const removeGovDeliverySubscriber = async (email) => {
                 if (subscribedToOtherTopics) {
                     logger.info(`${email} is subscribed to other topics, only removing All Staff subscription and answers.`);
 
-                    // Remove All Staff subscription
+                    // 2. Remove All Staff subscription
                     await rp.put(prepareTopicSubmissionRequest(email, topics.filter(topic => topic !== config.govdel.nciAllTopicCode)));
 
-                    // 3. Erase all responses, we don't have a user on this side at this point so we will use a new user record with just an email field.
-                    await rp.put(prepareResponseSubmissionRequest({ email }));
                     resolve();
 
                 } else {

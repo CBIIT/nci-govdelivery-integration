@@ -8,6 +8,7 @@ const logger = require('winston');
 const { util } = require('../resources/util');
 
 global.report = '';
+let callbacks = 0;
 
 const logToReport = (str) => {
     global.report += str + '<br/>';
@@ -21,7 +22,7 @@ const removeAllSubscribers = async () => {
     return new Promise(async (resolve, reject) => {
 
         logger.info('Starting process to remove all local and remote subscribers.');
-        const connection = await mongoConnector.getConnection();        
+        const connection = await mongoConnector.getConnection();
         logger.info(`Connecting to ${config.db.users_collection} collection`);
         const collection = connection.collection(config.db.users_collection);
 
@@ -30,23 +31,28 @@ const removeAllSubscribers = async () => {
 
         for (let user of allUsers) {
             try {
+                // Use throttle to send up to 100 requests in parallel.
+                await throttle(100);
 
                 logger.info(`Removing ${user.email}`);
-                await gdConnector.removeGovDeliverySubscriber(user.email);
-
-                // delete from local database
-                await collection.deleteOne(
-                    {
-                        ned_id: user.ned_id
-                    });
+                gdConnector.removeGovDeliverySubscriber(user.email).then(async () => {
+                    // delete from local database
+                    await collection.deleteOne(
+                        {
+                            ned_id: user.ned_id
+                        });
+                    releaseCallback();
+                });
 
             } catch (error) {
                 logger.error(`Failed to remove ${user.email} from GovDelivery. | ${error}`);
                 logToReport(`Failed to remove ${user.email} from GovDelivery. | ${error}`);
+                releaseCallback();
                 reject(error);
             }
         }
 
+        await waitForCallbacks();
         logger.info('Releasing local DB connection');
         await mongoConnector.releaseConnection();
 
@@ -55,6 +61,54 @@ const removeAllSubscribers = async () => {
 
     });
 
+};
+
+const uploadAllSubscribers = async () => {
+    return new Promise(async (resolve, reject) => {
+
+        const connection = await mongoConnector.getConnection();
+        logger.info(`Connecting to ${config.db.users_collection} collection`);
+        const collection = connection.collection(config.db.users_collection);
+
+        logger.info('Retrieving users from UserInfo');
+        const usersFromCurrentVds = await getUsers('nci');
+
+        logger.info('Retrieving user set from previous update');
+        const usersFromPreviousUpdate = await collection.find().sort({ email: 1 }).toArray() || [];
+
+        logger.info('Comparing subscriber lists');
+        const [toAdd] = util.compareSubscriberLists(usersFromCurrentVds, usersFromPreviousUpdate);
+
+        // Additions
+        if (toAdd.length > 0) {
+            logger.info('Start addition of subscribers');
+            logToReport('<p><strong>Adding the following subscribers:</strong></p>');
+        }
+        for (const user of toAdd) {
+            if (validEntry(user)) {
+                logger.info(`adding ${user.email} `);
+                try {
+
+                    await throttle(100);
+                    // Add remotely
+                    gdConnector.addGovDeliverySubscriber(user).then(async () => {
+                        await gdConnector.submitUserResponses(user);
+                        // Add locally
+                        await collection.insertOne(user);
+                        releaseCallback();
+                    });
+
+                } catch (error) {
+                    logger.error(`Failed to add ${user.email}`);
+                    process.exit(1);
+                }
+            }
+        }
+
+        await waitForCallbacks();
+        await mongoConnector.releaseConnection();
+
+    });
 };
 
 /**
@@ -139,7 +193,7 @@ const updateSubscribers = async () => {
             try {
 
                 // Respond to subscriber NCI all staff questions
-                await gdConnector.submitUserReponses(user);
+                await gdConnector.submitUserResponses(user);
                 await collection.replaceOne(
                     { ned_id: user.ned_id },
                     user,
@@ -212,4 +266,44 @@ const validEntry = (user) => {
         config.govdel.sac_answers[user.sac];
 };
 
-module.exports = { updateSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly };
+const releaseCallback = () => {
+    callbacks--;
+    console.log(`callback released! ...${callbacks} callbacks outstanding.`);
+};
+
+/**
+ * Waits until all outstanding callbacks have been called.
+ */
+const waitForCallbacks = () => {
+    return new Promise(resolve => {
+        (function wait() {
+            if (callbacks === 0) {
+                resolve();
+            } else {
+                console.log('waiting for completion');
+                setTimeout(wait, 100);
+            }
+        })();
+    });
+};
+
+
+/**
+ * Waits until outstanding callbacks fall under a specified number and then reserves a callback.
+ * This can be used in situations when the number of parallel requests should be limited to avoid overload of the remote.
+ */
+const throttle = (maxCallbacks) => {
+    return new Promise(resolve => {
+        (function wait() {
+            if (callbacks < maxCallbacks) {
+                callbacks++;
+                resolve();
+            } else {
+                console.log('waiting for throttled resources');
+                setTimeout(wait, 100);
+            }
+        })();
+    });
+};
+
+module.exports = { updateSubscribers, uploadAllSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly };
