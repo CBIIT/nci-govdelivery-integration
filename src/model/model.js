@@ -16,7 +16,7 @@ const logToReport = (str) => {
 
 const test = async () => {
 
-    const email = 'svetoslav.yankov@gmail.gov';
+    const email = 'svetoslav.yankov@nih.gov';
 
     try {
 
@@ -126,7 +126,7 @@ const addGovDeliverySubscriber = async (user) => {
                 const [subscribedToAllStaffTopic, subscribedToOtherTopics] = util.checkTopicSubscriptions(topics);
                 if (!subscribedToAllStaffTopic) {
                     logger.info(`${user.email} is not subscribed to All Staff, subscribing now...`);
-                    topics.add(config.govdel.nciAllTopicCode);
+                    topics.push(config.govdel.nciAllTopicCode);
                     await rp.put(prepareTopicSubmissionRequest(user.email, topics));
                 } else {
                     logger.info(`${user.email} is already subscribed to All Staff, skipping...`);
