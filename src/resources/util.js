@@ -1,11 +1,15 @@
 'use strict';
 const { config } = require('../../constants');
-const parser = require('xml2json');
+const parseString = require('xml2js').parseString;
 
 const util = {
 
     parseTopics: (topicsXmlResult) => {
-        let topics = JSON.parse(parser.toJson(topicsXmlResult)).topics.topic;
+        let topics;
+
+        parseString(topicsXmlResult, {explicitArray: false}, (err, result) => {
+            topics = result.topics.topic;
+        });
 
         let result = [];
 
@@ -36,7 +40,7 @@ const util = {
         const toAdd = [];
         const toUpdate = [];
         const toRemove = [];
-    
+
         let left = leftList.shift();
         let right = rightList.shift();
         while (left || right) {
@@ -59,7 +63,7 @@ const util = {
                 console.log(`${JSON.stringify(left)} and ${JSON.stringify(right)}`);
             }
         }
-    
+
         return [toAdd, toUpdate, toRemove];
     }
 
