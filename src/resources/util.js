@@ -5,19 +5,22 @@ const parseString = require('xml2js').parseString;
 const util = {
 
     parseTopics: (topicsXmlResult) => {
-        let topics;
-
-        parseString(topicsXmlResult, {explicitArray: false}, (err, result) => {
-            topics = result.topics.topic;
-        });
-
+        
         let result = [];
 
-        if (!(topics instanceof Array)) {
-            topics = [topics];
+        let topics;
+        parseString(topicsXmlResult, { explicitArray: false }, (err, result) => {
+            topics = result.topics.topic;
+        });
+       
+        if (topics) {
+
+            if (!(topics instanceof Array)) {
+                topics = [topics];
+            }
+            result = topics.map(topic => topic['to-param']) || [];
         }
 
-        result = topics.map(topic => topic['to-param']);
         return result;
     },
 
