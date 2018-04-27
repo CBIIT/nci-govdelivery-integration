@@ -1,6 +1,6 @@
 
 'use strict';
-const { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareSubscriberReadRequest, prepareResponseSubmissionRequest, prepareSubscriberTopicsReadRequest, prepareTopicSubmissionRequest } = require('../resources/govdelResources');
+const { prepareSubscriberRequest, prepareSubscriberReadRequest, prepareResponseSubmissionRequest, prepareSubscriberTopicsReadRequest, prepareTopicSubmissionRequest } = require('../resources/govdelResources');
 const { config } = require('../../constants');
 const rp = require('request-promise');
 const { util } = require('../resources/util');
@@ -55,7 +55,8 @@ const removeGovDeliverySubscriber = async (email) => {
                     logger.info(`${email} is not subscribed to All Staff, ignore.`);
                 } else {
                     // 2. Remove All Staff subscription
-                    await rp.put(prepareTopicSubmissionRequest(email, topics.filter(topic => topic !== config.govdel.nciAllTopicCode)));
+                    await rp.delete(prepareSubscriberRequest);
+                    // await rp.put(prepareTopicSubmissionRequest(email, topics.filter(topic => topic !== config.govdel.nciAllTopicCode)));
                 }
                 resolve();
 
@@ -97,18 +98,20 @@ const addGovDeliverySubscriber = async (user) => {
                 const topicsResult = await rp.get(prepareSubscriberTopicsReadRequest(user.email));
                 const topics = util.parseTopics(topicsResult);
 
-                const [subscribedToAllStaffTopic, subscribedToOtherTopics] = util.checkTopicSubscriptions(topics);
+                const [subscribedToAllStaffTopic] = util.checkTopicSubscriptions(topics);
                 if (!subscribedToAllStaffTopic) {
                     logger.info(`${user.email} is not subscribed to All Staff, subscribing now...`);
-                    topics.push(config.govdel.nciAllTopicCode);
-                    await rp.put(prepareTopicSubmissionRequest(user.email, topics));
+                    // topics.push(config.govdel.nciAllTopicCode);
+                    // await rp.put(prepareTopicSubmissionRequest(user.email, topics));
+                    
+                    await rp.post(prepareSubscriberRequest(user.email));
                 } else {
                     logger.info(`${user.email} is already subscribed to All Staff, skipping...`);
                 }
                 resolve();
             } else {
                 // Subscriber doesn't exist (the usual case) - add a new subscriber record.
-                await rp.post(prepareSubscriberCreateRequest(user.email));
+                await rp.post(prepareSubscriberRequest(user.email));
                 // logToReport(user.email);
                 await rp.put(prepareResponseSubmissionRequest(user));
                 resolve();

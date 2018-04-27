@@ -38,7 +38,6 @@ const getSubscriptionUrl = () => {
     const baseUrl = getBaseUrl();
     const accountCode = getAccountCode();
     const resource = getSubscriptionResource();
-    // console.log('URL1: ' + baseUrl + accountCode + resource);
     return baseUrl + accountCode + resource + '.xml';
 };
 
@@ -153,23 +152,6 @@ const composeResponses = (user) => {
     }
     response += '</responses>';
     return response;
-    //     <response>
-    //         <question-id>${config.govdel.questions['status']}</question-id>
-    //         <answer-id>${config.govdel.status_answers[user.status]}</answer-id>
-    //     </response>
-    //     <response>
-    //         <question-id>${config.govdel.questions['division']}</question-id>
-    //         <answer-id>${config.govdel.division_answers[user.division]}</answer-id>
-    //     </response>
-    //     <response>
-    //         <question-id>${config.govdel.questions['sac']}</question-id>
-    //         <answer-id>${config.govdel.sac_answers[user.sac]}</answer-id>
-    //     </response>
-    //     <response>
-    //         <question-id>${config.govdel.questions['building']}</question-id>
-    //         <answer-id>${config.govdel.building_answers[user.building]}</answer-id>
-    //     </response>
-    // </responses>
 };
 
 const composeTopics = (topics) => {
@@ -198,7 +180,7 @@ const prepareSubscriberRemoveRequest = (email) => ({
     timeout: 60000
 });
 
-const prepareSubscriberCreateRequest = (email) => {
+const prepareSubscriberRequest = (email) => {
     const subscriber = composeSubscriber(email);
     // Create subscriber and add a default subscription at the same time
     const url = getSubscriptionUrl();
@@ -255,4 +237,4 @@ const prepareSubscriberTopicsReadRequest = (email) => ({
     timeout: 6000
 });
 
-module.exports = { prepareSubscriberCreateRequest, prepareSubscriberRemoveRequest, prepareSubscriberReadRequest, prepareResponseSubmissionRequest, prepareSubscriberTopicsReadRequest, prepareTopicSubmissionRequest };
+module.exports = { prepareSubscriberRequest, prepareSubscriberRemoveRequest, prepareSubscriberReadRequest, prepareResponseSubmissionRequest, prepareSubscriberTopicsReadRequest, prepareTopicSubmissionRequest };

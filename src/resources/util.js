@@ -18,7 +18,7 @@ const util = {
             if (!(topics instanceof Array)) {
                 topics = [topics];
             }
-            result = topics.map(topic => topic['to-param']) || [];
+            result = topics.map(topic => topic['to-param']);
         }
 
         return result;
