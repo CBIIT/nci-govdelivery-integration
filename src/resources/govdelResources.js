@@ -1,6 +1,5 @@
 'use strict';
 const { config } = require('../../constants');
-const logger = require('winston');
 
 const getDefaultTopicCode = () => {
     return config.govdel.nciAllTopicCode;
@@ -47,42 +46,14 @@ const getSubscriptionUrl = () => {
  * @return Returns the URL of an API which can be used to GET, PUT or DELETE a subscriber record
  * 
  */
-const getSubscriberModificationUrl = (email) => {
+const getSubscriberUrl = (email) => {
     const baseUrl = getBaseUrl();
     const accountCode = getAccountCode();
     const resource = getSubscriberResource();
     const encodedSubscriberId = encodeSubscriberId(email);
-    // console.log('URL 2: ' + baseUrl + accountCode + resource + encodedSubscriberId + '.xml?send_notifications=false');
     return baseUrl + accountCode + resource + encodedSubscriberId + '.xml?send_notifications=false';
 
 };
-
-
-/**
- * @return Returns the URL of an API which can be used to POST new subscriber records.
- */
-const getSubscriberCreationUrl = () => {
-    const baseUrl = getBaseUrl();
-    const accountCode = getAccountCode();
-    const resource = getSubscriberResource();
-    return baseUrl + accountCode + resource + '.xml';
-};
-
-/**
- * 
- * @param {string} email
- * @return Returns the URL of an API which can be used to GET  a subscriber's topics
- * 
- */
-const getSubscriberTopicsUrl = (email) => {
-    const baseUrl = getBaseUrl();
-    const accountCode = getAccountCode();
-    const resource = getSubscriberResource();
-    const encodedSubscriberId = encodeSubscriberId(email);
-    return `${baseUrl}${accountCode}${resource}${encodedSubscriberId}/topics.xml`;
-
-};
-
 
 /**
  * 
@@ -95,7 +66,6 @@ const getResponseSubmissionUrl = (email) => {
     const subscriberResource = getSubscriberResource();
     const responseResource = getResponseResource();
     const encodedSubscriberId = encodeSubscriberId(email);
-    // console.log('URL3: ' + baseUrl + accountCode + subscriberResource + encodedSubscriberId + responseResource);
 
     return baseUrl + accountCode + subscriberResource + encodedSubscriberId + responseResource + '.xml?send_notifications=false';
 };
@@ -154,35 +124,9 @@ const composeResponses = (user) => {
     return response;
 };
 
-const composeTopics = (topics) => {
-    let response = `
-    <subscriber>
-        <send-notifications type='boolean'>false</send-notifications>
-            <topics type='array'>';
-    `;
-    topics.forEach(topic => {
-        response += `
-        <topic>
-            <code>${topic}</code>
-        </topic>`;
-    });
-    response += `
-        </topics>
-    </subscriber>
-    `;
-
-    return response;
-};
-
-const prepareSubscriberRemoveRequest = (email) => ({
-    url: getSubscriberModificationUrl(email),
-    auth: getAuthenticationObject(),
-    timeout: 60000
-});
-
-const prepareSubscriberRequest = (email) => {
+const prepareSubscriptionRequest = (email) => {
+    // Create a subscriber with the default subscriptions attached.
     const subscriber = composeSubscriber(email);
-    // Create subscriber and add a default subscription at the same time
     const url = getSubscriptionUrl();
     const auth = getAuthenticationObject();
 
@@ -210,31 +154,10 @@ const prepareResponseSubmissionRequest = (user) => {
 
 };
 
-const prepareTopicSubmissionRequest = (email, topics) => {
-    const url = getSubscriberTopicsUrl(email);
-    const auth = getAuthenticationObject();
-    const topicXml = composeTopics(topics);
-
-    return {
-        url: url,
-        body: topicXml,
-        headers: { 'Content-Type': 'application/xml' },
-        auth: auth,
-        timeout: 60000
-    };
-
-};
-
 const prepareSubscriberReadRequest = (email) => ({
-    url: getSubscriberModificationUrl(email),
+    url: getSubscriberUrl(email),
     auth: getAuthenticationObject(),
     timeout: 60000
 });
 
-const prepareSubscriberTopicsReadRequest = (email) => ({
-    url: getSubscriberTopicsUrl(email),
-    auth: getAuthenticationObject(),
-    timeout: 6000
-});
-
-module.exports = { prepareSubscriberRequest, prepareSubscriberRemoveRequest, prepareSubscriberReadRequest, prepareResponseSubmissionRequest, prepareSubscriberTopicsReadRequest, prepareTopicSubmissionRequest };
+module.exports = { prepareSubscriptionRequest, prepareSubscriberReadRequest, prepareResponseSubmissionRequest };
