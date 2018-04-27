@@ -49,27 +49,30 @@ const removeGovDeliverySubscriber = async (email) => {
                 */
                 const topicsResult = await rp.get(prepareSubscriberTopicsReadRequest(email));
                 const topics = util.parseTopics(topicsResult);
-                const [subscribedToAllStaffTopic, subscribedToOtherTopics] = util.checkTopicSubscriptions(topics);
+                const [subscribedToAllStaffTopic] = util.checkTopicSubscriptions(topics);
 
                 if (!subscribedToAllStaffTopic) {
                     logger.info(`${email} is not subscribed to All Staff, ignore.`);
-                    resolve();
-                }
-
-                if (subscribedToOtherTopics) {
-                    logger.info(`${email} is subscribed to other topics, only removing All Staff subscription and answers.`);
-
+                } else {
                     // 2. Remove All Staff subscription
                     await rp.put(prepareTopicSubmissionRequest(email, topics.filter(topic => topic !== config.govdel.nciAllTopicCode)));
-
-                    resolve();
-
-                } else {
-                    // Subscriber is only subscribed to All Staff, remove record completely.
-                    logger.info(`${email} is only subscribed to NCI All Staff, removing subscriber completely.`);
-                    await rp.delete(prepareSubscriberRemoveRequest(email));
-                    resolve();
                 }
+                resolve();
+
+                // if (subscribedToOtherTopics) {
+                //     logger.info(`${email} is subscribed to other topics, only removing All Staff subscription and answers.`);
+
+                //     // 2. Remove All Staff subscription
+                //     await rp.put(prepareTopicSubmissionRequest(email, topics.filter(topic => topic !== config.govdel.nciAllTopicCode)));
+
+                //     resolve();
+
+                // } else {
+                //     // Subscriber is only subscribed to All Staff, remove record completely.
+                //     logger.info(`${email} is only subscribed to NCI All Staff, removing subscriber completely.`);
+                //     await rp.delete(prepareSubscriberRemoveRequest(email));
+                //     resolve();
+                // }
             } else {
                 logger.info(`${email} not found in GovDelivery, ignore.`);
                 resolve();
