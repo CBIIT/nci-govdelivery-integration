@@ -99,7 +99,7 @@ const uploadAllSubscribers = async () => {
                     });
 
                 } catch (error) {
-                    logger.error(`Failed to add ${user.email}`);
+                    logger.error(`Failed to add ${user.email} | ${error}`);
                     process.exit(1);
                 }
             }
@@ -175,8 +175,8 @@ const updateSubscribers = async () => {
             logToReport(user.email);
 
         } catch (error) {
-            logger.error(`Failed to remove ${user.email}`);
-            logToReport(`Failed to remove of ${user.email}`);
+            logger.error(`Failed to remove ${user.email} | ${error}`);
+            logToReport(`Failed to remove of ${user.email} | ${error}`);
             await mailer.sendReport();
             process.exit(1);
         }
@@ -203,8 +203,8 @@ const updateSubscribers = async () => {
 
 
             } catch (error) {
-                logger.error(`Failed to update ${user.email}`);
-                logToReport(`Failed to update ${user.email}`);
+                logger.error(`Failed to update ${user.email} | ${error}`);
+                logToReport(`Failed to update ${user.email} | ${error}`);
                 await mailer.sendReport();
                 process.exit(1);
             }
@@ -230,8 +230,8 @@ const updateSubscribers = async () => {
                 logToReport(user.email);
 
             } catch (error) {
-                logger.error(`Failed to add ${user.email}`);
-                logToReport(`Failed to add ${user.email}`);
+                logger.error(`Failed to add ${user.email} | ${error}`);
+                logToReport(`Failed to add ${user.email} | ${error}`);
                 await mailer.sendReport();
                 process.exit(1);
             }
