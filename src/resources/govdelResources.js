@@ -120,44 +120,53 @@ const composeResponses = (user) => {
         </response>
         `;
     }
-    response += '</responses>';
-    return response;
-};
 
-const prepareSubscriptionRequest = (email) => {
-    // Create a subscriber with the default subscriptions attached.
-    const subscriber = composeSubscriber(email);
-    const url = getSubscriptionUrl();
-    const auth = getAuthenticationObject();
+    if (user.sac) {
+        response += `
+        <response>
+            <question-id>${config.govdel.questions['sac']}</question-id>
+            <answer-id>${config.govdel.building_answers[user.sac]}</answer-id>
+        </response>
+        `;
 
-    return {
-        url: url,
-        body: subscriber,
-        headers: { 'Content-Type': 'application/xml' },
-        auth: auth,
-        timeout: 60000
-    };
-};
-
-const prepareResponseSubmissionRequest = (user) => {
-    const url = getResponseSubmissionUrl(user.email);
-    const auth = getAuthenticationObject();
-    const responses = composeResponses(user);
-
-    return {
-        url: url,
-        body: responses,
-        headers: { 'Content-Type': 'application/xml' },
-        auth: auth,
-        timeout: 60000
+        response += '</responses>';
+        return response;
     };
 
-};
+    const prepareSubscriptionRequest = (email) => {
+        // Create a subscriber with the default subscriptions attached.
+        const subscriber = composeSubscriber(email);
+        const url = getSubscriptionUrl();
+        const auth = getAuthenticationObject();
 
-const prepareSubscriberReadRequest = (email) => ({
-    url: getSubscriberUrl(email),
-    auth: getAuthenticationObject(),
-    timeout: 60000
-});
+        return {
+            url: url,
+            body: subscriber,
+            headers: { 'Content-Type': 'application/xml' },
+            auth: auth,
+            timeout: 60000
+        };
+    };
 
-module.exports = { prepareSubscriptionRequest, prepareSubscriberReadRequest, prepareResponseSubmissionRequest };
+    const prepareResponseSubmissionRequest = (user) => {
+        const url = getResponseSubmissionUrl(user.email);
+        const auth = getAuthenticationObject();
+        const responses = composeResponses(user);
+
+        return {
+            url: url,
+            body: responses,
+            headers: { 'Content-Type': 'application/xml' },
+            auth: auth,
+            timeout: 60000
+        };
+
+    };
+
+    const prepareSubscriberReadRequest = (email) => ({
+        url: getSubscriberUrl(email),
+        auth: getAuthenticationObject(),
+        timeout: 60000
+    });
+
+    module.exports = { prepareSubscriptionRequest, prepareSubscriberReadRequest, prepareResponseSubmissionRequest };
