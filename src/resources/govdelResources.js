@@ -125,7 +125,7 @@ const composeResponses = (user) => {
         response += `
         <response>
             <question-id>${config.govdel.questions['sac']}</question-id>
-            <answer-id>${config.govdel.building_answers[user.sac]}</answer-id>
+            <answer-id>${config.govdel.sac_answers[user.sac]}</answer-id>
         </response>
         `;
 
