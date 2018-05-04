@@ -96,11 +96,24 @@ const uploadAllSubscribers = async () => {
                         // Add locally
                         await collection.insertOne(user);
                         releaseCallback();
+                    }).catch( (error) => {
+                        logger.error(`Failed to add ${user.email} | ${error}`);
+                        if (!error.message.includes('GD-15004')) {
+                            // GD-15004: User has chosen not to receive emails.
+                            process.exit(1);
+                        } else {
+                            releaseCallback();
+                        }
                     });
 
                 } catch (error) {
                     logger.error(`Failed to add ${user.email} | ${error}`);
-                    process.exit(1);
+                    if (!error.message.includes('GD-15004')) {
+                        // GD-15004: User has chosen not to receive emails.
+                        process.exit(1);
+                    } else {
+                        releaseCallback();
+                    }
                 }
             }
         }
@@ -232,8 +245,12 @@ const updateSubscribers = async () => {
             } catch (error) {
                 logger.error(`Failed to add ${user.email} | ${error}`);
                 logToReport(`Failed to add ${user.email} | ${error}`);
-                await mailer.sendReport();
-                process.exit(1);
+                if (!error.message.includes('GD-15004')) {
+                    await mailer.sendReport();
+                    process.exit(1);
+                } else {
+                    // GD-15004: subscriber has chosen not to receive notification emails.
+                }
             }
         }
     }
