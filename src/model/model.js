@@ -176,7 +176,7 @@ const updateSubscribers = async () => {
         logToReport('<p><strong>Removing the following subscribers:</strong></p>');
     }
     for (const user of toRemove) {
-        logger.info(`removing ${user.email}`);
+        logger.info(`removing ${user.email}  [${user.ned_id}]`);
         try {
 
             await gdConnector.removeGovDeliverySubscriber(user.email);
@@ -185,11 +185,11 @@ const updateSubscribers = async () => {
                 {
                     ned_id: user.ned_id
                 });
-            logToReport(user.email);
+            logToReport(`${user.email} [${user.ned_id}]`);
 
         } catch (error) {
-            logger.error(`Failed to remove ${user.email} | ${error}`);
-            logToReport(`Failed to remove of ${user.email} | ${error}`);
+            logger.error(`Failed to remove ${user.email}  [${user.ned_id}] | ${error}`);
+            logToReport(`Failed to remove of ${user.email}  [${user.ned_id}] | ${error}`);
             await mailer.sendReport();
             process.exit(1);
         }
@@ -202,7 +202,7 @@ const updateSubscribers = async () => {
     }
     for (const user of toUpdate) {
         if (validEntry(user)) {
-            logger.info(`updating ${user.email}`);
+            logger.info(`updating ${user.email}  [${user.ned_id}]`);
             try {
 
                 // Respond to subscriber NCI all staff questions
@@ -212,12 +212,10 @@ const updateSubscribers = async () => {
                     user,
                     { upsert: true }
                 );
-                logToReport(user.email);
-
-
+                logToReport(`${user.email} [${user.ned_id}]`);
             } catch (error) {
-                logger.error(`Failed to update ${user.email} | ${error}`);
-                logToReport(`Failed to update ${user.email} | ${error}`);
+                logger.error(`Failed to update ${user.email}  [${user.ned_id}] | ${error}`);
+                logToReport(`Failed to update ${user.email}  [${user.ned_id}] | ${error}`);
                 await mailer.sendReport();
                 process.exit(1);
             }
@@ -231,7 +229,7 @@ const updateSubscribers = async () => {
     }
     for (const user of toAdd) {
         if (validEntry(user)) {
-            logger.info(`adding ${user.email} `);
+            logger.info(`adding ${user.email}  [${user.ned_id}]`);
             try {
 
                 // Add remotely
@@ -240,11 +238,11 @@ const updateSubscribers = async () => {
 
                 // Add locally
                 await collection.insertOne(user);
-                logToReport(user.email);
+                logToReport(`${user.email} [${user.ned_id}]`);
 
             } catch (error) {
-                logger.error(`Failed to add ${user.email} | ${error}`);
-                logToReport(`Failed to add ${user.email} | ${error}`);
+                logger.error(`Failed to add ${user.email}  [${user.ned_id}] | ${error}`);
+                logToReport(`Failed to add ${user.email}  [${user.ned_id}] | ${error}`);
                 if (!error.message.includes('GD-15004')) {
                     await mailer.sendReport();
                     process.exit(1);
