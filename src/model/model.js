@@ -8,6 +8,7 @@ const logger = require('winston');
 const { util } = require('../resources/util');
 
 global.report = '';
+global.optOuts = '';
 let callbacks = 0;
 
 const logToReport = (str) => {
