@@ -14,6 +14,10 @@ const logToReport = (str) => {
     global.report += str + '<br/>';
 };
 
+const logOptOut = (email) => {
+    global.optOuts += email + '<br/>';
+};
+
 /**
  * Removes all subscribers one-by-one from the local and remote user base.
  */
@@ -242,12 +246,13 @@ const updateSubscribers = async () => {
 
             } catch (error) {
                 logger.error(`Failed to add ${user.email}  [${user.ned_id}] | ${error}`);
-                logToReport(`Failed to add ${user.email}  [${user.ned_id}] | ${error}`);
                 if (!error.message.includes('GD-15004')) {
+                    logToReport(`Failed to add ${user.email}  [${user.ned_id}] | ${error}`);
                     await mailer.sendReport();
                     process.exit(1);
                 } else {
                     // GD-15004: subscriber has chosen not to receive notification emails.
+                    logOptOut(user.email);
                 }
             }
         }
