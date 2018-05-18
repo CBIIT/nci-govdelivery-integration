@@ -87,7 +87,7 @@ const uploadAllSubscribers = async () => {
         // Additions
         if (toAdd.length > 0) {
             logger.info('Start addition of subscribers');
-            logToReport('<p><strong>Adding the following subscribers:</strong></p>');
+            logToReport('<p>Subscriber bulk upload - No reporting of individual subscribers will be provided.</p>');
         }
         for (const user of toAdd) {
             if (validEntry(user)) {
