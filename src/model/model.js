@@ -9,6 +9,7 @@ const { util } = require('../resources/util');
 
 global.report = '';
 global.optOuts = '';
+global.optOutsUpdates = '';
 let callbacks = 0;
 
 const logToReport = (str) => {
@@ -19,6 +20,9 @@ const logOptOut = (email) => {
     global.optOuts += email + '<br/>';
 };
 
+const logOptOutUpdates = (email) => {
+    global.optOutsUpdates += email + '<br/>';
+};
 /**
  * Removes all subscribers one-by-one from the local and remote user base.
  */
@@ -226,9 +230,13 @@ const updateSubscribers = async () => {
                 logToReport(`${user.email} [${user.ned_id}]`);
             } catch (error) {
                 logger.error(`Failed to update ${user.email}  [${user.ned_id}] | ${error}`);
-                logToReport(`Failed to update ${user.email}  [${user.ned_id}] | ${error}`);
-                await mailer.sendReport();
-                process.exit(1);
+                if (!error.message.includes('GD-15002')) {
+                    logToReport(`Failed to update ${user.email}  [${user.ned_id}] | ${error}`);
+                    await mailer.sendReport();
+                    process.exit(1);
+                } else {
+                    logOptOutUpdates(user.email);
+                }
             }
         }
     }
@@ -279,6 +287,7 @@ const validEntry = (user) => {
         process.exit(2);
     }
     if (!config.govdel.building_answers[user.building]) {
+        logger.error(user.building);
         logger.error(`config.govdel.building_answers[${user.building}]has a problem for ${user.email}`);
         process.exit(2);
     }
