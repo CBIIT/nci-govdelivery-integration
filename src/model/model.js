@@ -179,8 +179,9 @@ const updateSubscribers = async () => {
     logger.info(toUpdate.length + ' to update');
     logger.info(toRemove.length + ' to remove');
 
-    if (toRemove.length > 99) {
+    if (toRemove.length > 199) {
         logToReport('<p>Too many subscribers to remove. Update will not proceed! Advising data source verification manual update. </p>');
+        logger.error('Too many subscribers to remove. Update will not proceed! Advising data source verification manual update.');
         await mailer.sendReport();
         process.exit(1);
     }
