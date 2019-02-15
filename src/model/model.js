@@ -231,7 +231,7 @@ const updateSubscribers = async () => {
                 logToReport(`${user.email} [${user.ned_id}]`);
             } catch (error) {
                 logger.error(`Failed to update ${user.email}  [${user.ned_id}] | ${error}`);
-                if (!error.message.includes('GD-15002')) {
+                if (!error.message.includes('GD-15002') && !error.message.includes('GD-15004')) {
                     logToReport(`Failed to update ${user.email}  [${user.ned_id}] | ${error}`);
                     await mailer.sendReport();
                     process.exit(1);
@@ -262,7 +262,7 @@ const updateSubscribers = async () => {
 
             } catch (error) {
                 logger.error(`Failed to add ${user.email}  [${user.ned_id}] | ${error}`);
-                if (!error.message.includes('GD-15004')) {
+                if (!error.message.includes('GD-15004') && !error.message.includes('GD-15002') ) {
                     logToReport(`Failed to add ${user.email}  [${user.ned_id}] | ${error}`);
                     await mailer.sendReport();
                     process.exit(1);
