@@ -40,6 +40,10 @@ const sendReport = () => {
         global.report += '<p><strong>Failed due to error GD-15002 (Subscriber not found):</strong></p>';
         global.report += global.optOutsUpdates;
     }
+    if (global.invalidData) {
+        global.report += '<p><strong>Failed due to invalid Data (User data not in configuration file):</strong></p>';
+        global.report += global.invalidData;
+    }
     send(config.mail.admin_list, config.mail.subjectPrefix + 'GovDelivery Update Report', global.report);
 };
 

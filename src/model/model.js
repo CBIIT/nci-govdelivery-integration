@@ -10,6 +10,7 @@ const { util } = require('../resources/util');
 global.report = '';
 global.optOuts = '';
 global.optOutsUpdates = '';
+global.invalidData = '';
 let callbacks = 0;
 
 const logToReport = (str) => {
@@ -22,6 +23,10 @@ const logOptOut = (email) => {
 
 const logOptOutUpdates = (email) => {
     global.optOutsUpdates += email + '<br/>';
+};
+
+const logInvalidData = (msg) => {
+    global.invalidData += msg + '<br/>';
 };
 /**
  * Removes all subscribers one-by-one from the local and remote user base.
@@ -281,26 +286,27 @@ const updateSubscribers = async () => {
 const validEntry = (user) => {
     if (!config.govdel.status_answers[user.status]) {
         logger.error(`config.govdel.status_answers[${user.status}]has a problem for ${user.email}`);
-        process.exit(2);
+        logInvalidData(`${user.email} has an invalid status: "${user.status}"`);
+        return false;
     }
     if (!config.govdel.division_answers[user.division]) {
         logger.error(`config.govdel.division_answers[${user.division}]has a problem for ${user.email}`);
-        process.exit(2);
+        logInvalidData(`${user.email} has an invalid division: "${user.division}"`);
+        return false;
     }
     if (!config.govdel.building_answers[user.building]) {
         logger.error(user.building);
         logger.error(`config.govdel.building_answers[${user.building}]has a problem for ${user.email}`);
-        process.exit(2);
+        logInvalidData(`${user.email} has an invalid building: "${user.building}"`);
+        return false;
     }
     if (!config.govdel.sac_answers[user.sac]) {
         logger.error(`config.govdel.sac_answers[${user.sac}]has a problem for ${user.email}`);
-        process.exit(2);
+        logInvalidData(`${user.email} has an invalid sac: "${user.sac}"`);
+        return false;
     }
 
-    return config.govdel.status_answers[user.status] &&
-        config.govdel.division_answers[user.division] &&
-        config.govdel.building_answers[user.building] &&
-        config.govdel.sac_answers[user.sac];
+    return true;
 };
 
 const releaseCallback = () => {
