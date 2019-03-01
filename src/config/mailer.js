@@ -22,16 +22,10 @@ const send = async (recipient, subject, message) => {
         html: message
     };
 
-    try {
-        transporter.sendMail(mailOptions);
-    } catch (error) {
-        logger.error(error);
-    }
+    return transporter.sendMail(mailOptions);
 };
 
 const sendReport = () => {
-    
-
     if (global.optOuts) {
         global.report += '<p><strong>Failed due to error GD-15004 (This destination has requested to no longer receive emails from National Cancer Institute):</strong></p>';
         global.report += global.optOuts;
@@ -44,7 +38,7 @@ const sendReport = () => {
         global.report += '<p><strong>Failed due to invalid Data (User data not in configuration file):</strong></p>';
         global.report += global.invalidData;
     }
-    send(config.mail.admin_list, config.mail.subjectPrefix + 'GovDelivery Update Report', global.report);
+    return send(config.mail.admin_list, config.mail.subjectPrefix + 'GovDelivery Update Report', global.report);
 };
 
 

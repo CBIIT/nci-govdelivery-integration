@@ -6,13 +6,14 @@ const logger = require('./src/config/log');
 
 let end = false;
 process.on('beforeExit', async code => {
-    if (end) {
+    mailer.sendReport().then(() => {
+        logger.info('Process exit ' + code);
         process.exit();
-    }
-    // send the update report
-    mailer.sendReport();
-    end = true;
-    logger.info('Process exit ' + code);
+    }).catch(error => {
+        logger.error(error);
+        logger.info('Process exit ' + code);
+        process.exit(1);
+    });
 });
 
 program
