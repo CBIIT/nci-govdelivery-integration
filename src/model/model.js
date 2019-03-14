@@ -282,6 +282,45 @@ const updateSubscribers = async () => {
 
 };
 
+const rebaseSubscribers = async (csvFile) => {
+    try {
+        logToReport('Starting rebase subscribers update on ' + Date().toLocaleString());
+
+        const connection = await mongoConnector.getConnection();
+        logger.info(`Connecting to ${config.db.users_collection} collection`);
+        const collection = connection.collection(config.db.users_collection);
+
+        logger.info('Retrieving users from UserInfo');
+        const usersFromCurrentVds = await getUsers('nci');
+        const users = usersFromCurrentVds.reduce( (acc, user) => {
+            acc[user.email] = user;
+            return acc;
+        }, {});
+        const subscribersFromGovDelivery = await util.readSubscribersFromCSV(csvFile);
+        if (subscribersFromGovDelivery && subscribersFromGovDelivery.length > 0) {
+            const numUsers = await collection.deleteMany({});
+            logToReport(`All ${numUsers.deletedCount} users deleted from local DB!`);
+
+            for (const subscriber of subscribersFromGovDelivery) {
+                let user = users[subscriber];
+                if (user && validEntry(user)) {
+                    logger.info(`adding ${user.email}  [${user.ned_id}]`);
+                    try {
+                        await collection.insertOne(user);
+                        logToReport(`${user.email} [${user.ned_id}] added to local DB`);
+                    } catch (error) {
+                        logger.error(`Failed to add ${user.email}  [${user.ned_id}] | ${error}`);
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        logToReport(`An exception happened: ${error}`);
+        logger.error(error);
+    } finally {
+        await mongoConnector.releaseConnection();
+    }
+};
 
 const validEntry = (user) => {
     if (!config.govdel.status_answers[user.status]) {
@@ -349,4 +388,4 @@ const throttle = (maxCallbacks) => {
     });
 };
 
-module.exports = { updateSubscribers, uploadAllSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly };
+module.exports = { updateSubscribers, uploadAllSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly, rebaseSubscribers};

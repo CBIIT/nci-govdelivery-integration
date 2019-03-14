@@ -1,6 +1,6 @@
 const program = require('commander');
 // const { config } = require('./constants');
-const { updateSubscribers, removeAllSubscribers, uploadAllSubscribers, reloadLocalSubscriberBaseOnly } = require('./src/model/model');
+const { updateSubscribers, removeAllSubscribers, uploadAllSubscribers, reloadLocalSubscriberBaseOnly, rebaseSubscribers} = require('./src/model/model');
 const mailer = require('./src/config/mailer');
 const logger = require('./src/config/log');
 
@@ -34,6 +34,10 @@ program
 program
     .command('reloadLocalSubscriberBaseOnly')
     .description('Reload Local User Base (No GovDel upload)')
-    .action(reloadLocalSubscriberBaseOnly);   
-    
+    .action(reloadLocalSubscriberBaseOnly);
+program
+    .command('rebaseSubscribers <csvFile>')
+    .description('Empty local DB and load users from GovDeliver subscribers list (in CSV file)')
+    .action(rebaseSubscribers);
+
 program.parse(process.argv);

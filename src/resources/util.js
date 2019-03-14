@@ -1,6 +1,8 @@
 'use strict';
 const { config } = require('../../constants');
 const parseString = require('xml2js').parseString;
+const csv = require('csv');
+const fs = require('fs');
 
 const util = {
 
@@ -68,6 +70,25 @@ const util = {
         }
 
         return [toAdd, toUpdate, toRemove];
+    },
+
+    readSubscribersFromCSV: async(filename) => {
+        return new Promise((resolve, reject) => {
+            fs.readFile(filename, 'utf8', function(err, contents) {
+                if (err) {
+                    return reject();
+                }
+                csv.parse(contents, { }, function(err, output){
+                    if (err) {
+                        return reject(err);
+                    }
+                    resolve(output.map( user => {
+                        return user[0];
+                    }));
+                });
+            });
+
+        });
     }
 
 };
