@@ -301,24 +301,29 @@ const rebaseSubscribers = async (csvFile) => {
             const numUsers = await collection.deleteMany({});
             logToReport(`All ${numUsers.deletedCount} users deleted from local DB!`);
 
+            let addedUserCount = 0;
             for (const subscriber of subscribersFromGovDelivery) {
                 let user = users[subscriber];
                 if (user && validEntry(user)) {
                     logger.info(`adding ${user.email}  [${user.ned_id}]`);
                     try {
                         await collection.insertOne(user);
-                        logToReport(`${user.email} [${user.ned_id}] added to local DB`);
+                        logger.info(`${user.email}  [${user.ned_id}] added to local DB.`);
+                        addedUserCount++;
                     } catch (error) {
                         logger.error(`Failed to add ${user.email}  [${user.ned_id}] | ${error}`);
+                        logToReport(`Failed to add ${user.email}  [${user.ned_id}] | ${error}`);
                     }
                 }
             }
+            logToReport(`${addedUserCount} users added to local DB`);
         }
     } catch (error) {
         logToReport(`An exception happened: ${error}`);
         logger.error(error);
     } finally {
         await mongoConnector.releaseConnection();
+        logToReport('Rebase subscribers finished on ' + Date().toLocaleString());
     }
 };
 
