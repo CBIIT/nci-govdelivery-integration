@@ -7,10 +7,14 @@ const rp = require('request-promise');
 
 const emailActiveDelayDays = 2;
 
-function estimatedEmailActivated(startDate) {
+function estimatedEmailActivated(startDateStr) {
     const today = new Date();
-    let activeDate = new Date(startDate);
+    let startDate = new Date(startDateStr);
+    let activeDate = new Date(startDateStr);
     activeDate.setDate(activeDate.getDate() + emailActiveDelayDays);
+    if (today > startDate && today <= activeDate) {
+        console.log(`User started on ${startDate} but email not activated yet`);
+    }
     return today > activeDate;
 }
 
