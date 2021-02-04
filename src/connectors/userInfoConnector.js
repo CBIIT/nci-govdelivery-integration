@@ -13,7 +13,7 @@ function estimatedEmailActivated(startDateStr) {
     let activeDate = new Date(startDateStr);
     activeDate.setDate(activeDate.getDate() + emailActiveDelayDays);
     if (today > startDate && today <= activeDate) {
-        console.log(`User started on ${startDate} but email not activated yet`);
+        logger.info(`User started on ${startDate} but email not activated yet`);
     }
     return today > activeDate;
 }
