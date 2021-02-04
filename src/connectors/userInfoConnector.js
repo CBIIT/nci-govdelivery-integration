@@ -5,6 +5,15 @@ const logger = require('winston');
 
 const rp = require('request-promise');
 
+const emailActiveDelayDays = 2;
+
+function estimatedEmailActivated(startDate) {
+    const today = new Date();
+    let activeDate = new Date(startDate);
+    activeDate.setDate(activeDate.getDate() + emailActiveDelayDays);
+    return today > activeDate;
+}
+
 const getUsers = async (ic) => {
 
     return new Promise(async (resolve, reject) => {
@@ -29,6 +38,7 @@ const getUsers = async (ic) => {
                     sac,
                     status,
                     division,
+                    effective_start_date,
                     building
                 }
             }`
@@ -41,7 +51,7 @@ const getUsers = async (ic) => {
             const userInfoUsers = JSON.parse(userData).data.users;
             userInfoUsers.forEach(user => {
 
-                if (user.email && !user.inactive) {
+                if (user.email && !user.inactive && estimatedEmailActivated(user.effective_start_date)) {
                     users.push({
                         ned_id: user.ned_id,
                         email: user.email,
