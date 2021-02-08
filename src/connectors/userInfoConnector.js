@@ -7,13 +7,13 @@ const rp = require('request-promise');
 
 const emailActiveDelayDays = 2;
 
-function estimatedEmailActivated(startDateStr) {
+function estimatedEmailActivated(startDateStr, ned_id) {
     const today = new Date();
     let startDate = new Date(startDateStr);
     let activeDate = new Date(startDateStr);
     activeDate.setDate(activeDate.getDate() + emailActiveDelayDays);
     if (today > startDate && today <= activeDate) {
-        logger.info(`User started on ${startDate} but email not activated yet`);
+        logger.info(`User: ${ned_id} started on ${startDate} but email not activated yet`);
     }
     return today > activeDate;
 }
@@ -55,7 +55,7 @@ const getUsers = async (ic) => {
             const userInfoUsers = JSON.parse(userData).data.users;
             userInfoUsers.forEach(user => {
 
-                if (user.email && !user.inactive && estimatedEmailActivated(user.effective_start_date)) {
+                if (user.email && !user.inactive && estimatedEmailActivated(user.effective_start_date, user.ned_id)) {
                     users.push({
                         ned_id: user.ned_id,
                         email: user.email,
