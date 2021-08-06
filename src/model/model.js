@@ -85,7 +85,7 @@ const uploadAllSubscribers = async () => {
         const collection = connection.collection(config.db.users_collection);
 
         logger.info('Retrieving users from UserInfo');
-        const usersFromCurrentVds = await getUsers('nci');
+        const usersFromCurrentVds = await getUsers('NCI');
 
         logger.info('Retrieving user set from previous update');
         const usersFromPreviousUpdate = await collection.find().sort({ email: 1 }).toArray() || [];
@@ -147,7 +147,7 @@ const reloadLocalSubscriberBaseOnly = async () => {
     const collection = connection.collection(config.db.users_collection);
 
     try {
-        const usersFromCurrentVds = await getUsers('nci');
+        const usersFromCurrentVds = await getUsers('NCI');
         await collection.remove({});
         await collection.insertMany(usersFromCurrentVds);
         mongoConnector.releaseConnection();
@@ -176,7 +176,7 @@ const updateSubscribersHelper = async (queryName = 'users') => {
     const collection = connection.collection(config.db.users_collection);
 
     logger.info('Retrieving users from UserInfo');
-    const usersFromCurrentVds = await getUsers('nci', queryName);
+    const usersFromCurrentVds = await getUsers('NCI', queryName);
 
     logger.info('Retrieving user set from previous update');
     const usersFromPreviousUpdate = await collection.find().sort({ email: 1 }).toArray() || [];
@@ -299,7 +299,7 @@ const rebaseSubscribers = async (csvFile) => {
         const collection = connection.collection(config.db.users_collection);
 
         logger.info('Retrieving users from UserInfo');
-        const usersFromCurrentVds = await getUsers('nci');
+        const usersFromCurrentVds = await getUsers('NCI');
         const users = usersFromCurrentVds.reduce( (acc, user) => {
             acc[user.email] = user;
             return acc;
