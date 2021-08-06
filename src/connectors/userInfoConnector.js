@@ -35,7 +35,7 @@ const getUsers = async (ic) => {
             },
             body:
                 `{
-                users(ic: "${ic}") {
+                usersLocal(ic: "${ic}") {
                     ned_id,
                     inactive,
                     email,
@@ -52,7 +52,8 @@ const getUsers = async (ic) => {
         try {
             const userData = await rp(userInfoOptions);
 
-            const userInfoUsers = JSON.parse(userData).data.users;
+            const userInfoUsers = JSON.parse(userData).data.usersLocal;
+            logger.info(`Received ${userInfoUsers.length} users from UserInfo API`);
             userInfoUsers.forEach(user => {
 
                 if (user.email && !user.inactive && estimatedEmailActivated(user.effective_start_date, user.ned_id)) {
