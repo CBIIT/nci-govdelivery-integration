@@ -156,11 +156,19 @@ const reloadLocalSubscriberBaseOnly = async () => {
     }
 };
 
+const updateSubscribersFromMongo = async () => {
+    updateSubscribersHelper('usersLocal');
+};
+
+const updateSubscribers = async () => {
+    updateSubscribersHelper();
+};
+
 /**
  * 
  * Updates the local and remote subscriber base.
  */
-const updateSubscribers = async () => {
+const updateSubscribersHelper = async (queryName = 'users') => {
     logToReport('Starting subscriber update on ' + Date().toLocaleString());
 
     const connection = await mongoConnector.getConnection();
@@ -168,7 +176,7 @@ const updateSubscribers = async () => {
     const collection = connection.collection(config.db.users_collection);
 
     logger.info('Retrieving users from UserInfo');
-    const usersFromCurrentVds = await getUsers('nci');
+    const usersFromCurrentVds = await getUsers('nci', queryName);
 
     logger.info('Retrieving user set from previous update');
     const usersFromPreviousUpdate = await collection.find().sort({ email: 1 }).toArray() || [];
@@ -393,4 +401,11 @@ const throttle = (maxCallbacks) => {
     });
 };
 
-module.exports = { updateSubscribers, uploadAllSubscribers, removeAllSubscribers, reloadLocalSubscriberBaseOnly, rebaseSubscribers};
+module.exports = {
+    updateSubscribers,
+    updateSubscribersFromMongo,
+    uploadAllSubscribers,
+    removeAllSubscribers,
+    reloadLocalSubscriberBaseOnly,
+    rebaseSubscribers
+};

@@ -1,6 +1,13 @@
 const program = require('commander');
 // const { config } = require('./constants');
-const { updateSubscribers, removeAllSubscribers, uploadAllSubscribers, reloadLocalSubscriberBaseOnly, rebaseSubscribers} = require('./src/model/model');
+const {
+    updateSubscribers,
+    updateSubscribersFromMongo,
+    removeAllSubscribers,
+    uploadAllSubscribers,
+    reloadLocalSubscriberBaseOnly,
+    rebaseSubscribers
+} = require('./src/model/model');
 const mailer = require('./src/config/mailer');
 const logger = require('./src/config/log');
 
@@ -23,6 +30,10 @@ program
     .command('updateSubscribers')
     .description('Updates subscribers')
     .action(updateSubscribers);
+program
+    .command('updateSubscribersFromMongo')
+    .description('Updates subscribers from MongoDB')
+    .action(updateSubscribersFromMongo);
 program
     .command('uploadAllSubscribers')
     .description('Upload all subscribers')

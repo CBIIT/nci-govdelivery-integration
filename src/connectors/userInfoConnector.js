@@ -18,7 +18,7 @@ function estimatedEmailActivated(startDateStr, ned_id) {
     return today > activeDate;
 }
 
-const getUsers = async (ic) => {
+const getUsers = async (ic, queryName='users') => {
 
     return new Promise(async (resolve, reject) => {
         const users = [];
@@ -35,7 +35,7 @@ const getUsers = async (ic) => {
             },
             body:
                 `{
-                usersLocal(ic: "${ic}") {
+                ${queryName}(ic: "${ic}") {
                     ned_id,
                     inactive,
                     email,
@@ -52,7 +52,7 @@ const getUsers = async (ic) => {
         try {
             const userData = await rp(userInfoOptions);
 
-            const userInfoUsers = JSON.parse(userData).data.usersLocal;
+            const userInfoUsers = JSON.parse(userData).data[queryName];
             logger.info(`Received ${userInfoUsers.length} users from UserInfo API`);
             userInfoUsers.forEach(user => {
 
